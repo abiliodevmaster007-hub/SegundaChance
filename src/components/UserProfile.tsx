@@ -1,21 +1,25 @@
 import React, { useState } from 'react';
-import { User, Listing, ANGOLA_PROVINCES } from '../types';
-import { MapPin, Calendar, Star, ShoppingBag, Edit3, Save, X, PlusCircle } from 'lucide-react';
+import { User, Listing, AdBanner, ANGOLA_PROVINCES } from '../types';
+import { MapPin, Calendar, Star, ShoppingBag, Edit3, Save, X, PlusCircle, Megaphone, ArrowLeft } from 'lucide-react';
 import ListingCard from './ListingCard';
+import AdPromotionPayment from './AdPromotionPayment';
 
 interface UserProfileProps {
   currentUser: User;
   onUpdateProfile: (updatedFields: Partial<User>) => void;
   listings: Listing[];
   onOpenListingDetail: (listing: Listing) => void;
+  onAddPendingBanner?: (banner: Omit<AdBanner, 'id' | 'createdAt'>) => void;
 }
 
 export default function UserProfile({ 
   currentUser, 
   onUpdateProfile, 
   listings, 
-  onOpenListingDetail 
+  onOpenListingDetail,
+  onAddPendingBanner
 }: UserProfileProps) {
+  const [viewMode, setViewMode] = useState<'profile' | 'promote'>('profile');
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
     name: currentUser.name || '',
@@ -26,8 +30,6 @@ export default function UserProfile({
   });
 
   const handleSave = () => {
-    // Ponto de Integração Futuro com Spring Boot: 
-    // PUT /api/users/{id} enviando o objeto JSON atualizado
     onUpdateProfile(formData);
     setIsEditing(false);
   };
@@ -36,196 +38,250 @@ export default function UserProfile({
     l => l.sellerId === currentUser.id && l.status === 'disponivel'
   );
 
+  const handleAddPendingBannerCallback = (banner: Omit<AdBanner, 'id' | 'createdAt'>) => {
+    if (onAddPendingBanner) {
+      onAddPendingBanner(banner);
+    }
+  };
+
   return (
     <div className="w-full max-w-4xl mx-auto p-4 sm:p-6 lg:p-8">
-      {/* Ponto de Integração Futuro: GET /api/users/{currentUser.id} para obter bio, avaliação rating e estatísticas */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-8">
-        
-        {/* Banner Gradient Decorativo */}
-        <div className="h-32 bg-gradient-to-r from-indigo-500 to-indigo-800 relative"></div>
+      
+      {/* Botão de navegação local caso esteja na vista de promoção */}
+      {viewMode === 'promote' && (
+        <button
+          onClick={() => setViewMode('profile')}
+          className="mb-6 inline-flex items-center gap-1.5 text-slate-500 hover:text-indigo-650 font-bold text-xs uppercase tracking-wider bg-slate-100 hover:bg-slate-200 py-2 px-4 rounded-xl transition border border-slate-200/50 cursor-pointer"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          <span>Voltar ao meu Perfil</span>
+        </button>
+      )}
 
-        {/* Informações Principais do Perfil */}
-        <div className="px-6 pb-6 relative flex flex-col md:flex-row md:items-end gap-5 -translate-y-10 md:-translate-y-6">
-          <div className="relative group shrink-0">
-            <img 
-              src={formData.avatarUrl} 
-              alt={currentUser.name} 
-              className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl object-cover ring-4 ring-white bg-white shadow-md"
-              referrerPolicy="no-referrer"
-            />
+      {/* RENDERIZAÇÃO CONDICIONAL DA VISTA DE PROMOÇÃO / PAGAMENTO */}
+      {viewMode === 'promote' ? (
+        <div className="animate-fadeIn">
+          <AdPromotionPayment onAddPendingBanner={handleAddPendingBannerCallback} />
+        </div>
+      ) : (
+        <>
+          {/* Ponto de Integração Futuro: GET /api/users/{currentUser.id} para obter bio, avaliação rating e estatísticas */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-8">
+            
+            {/* Banner Gradient Decorativo */}
+            <div className="h-32 bg-gradient-to-r from-indigo-500 to-indigo-800 relative">
+              <button
+                onClick={() => setViewMode('promote')}
+                className="absolute top-4 right-4 bg-white/95 backdrop-blur-sm hover:bg-indigo-650 hover:text-white text-slate-900 font-black text-[9.5px] uppercase tracking-wider py-2 px-3.5 rounded-xl transition flex items-center gap-1.5 shadow-md border border-white/20 hover:scale-[1.01] cursor-pointer group"
+              >
+                <Megaphone className="h-3.5 w-3.5 text-indigo-600 group-hover:text-white" />
+                <span>Anunciar Negócio (Rotação Side Panel)</span>
+              </button>
+            </div>
+
+            {/* Informações Principais do Perfil */}
+            <div className="px-6 pb-6 relative flex flex-col md:flex-row md:items-end gap-5 -translate-y-10 md:-translate-y-6">
+              <div className="relative group shrink-0">
+                <img 
+                  src={formData.avatarUrl} 
+                  alt={currentUser.name} 
+                  className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl object-cover ring-4 ring-white bg-white shadow-md"
+                  referrerPolicy="no-referrer"
+                />
+              </div>
+
+              <div className="flex-1 min-w-0 pt-2 md:pt-0">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h1 className="text-xl sm:text-2xl font-black text-slate-900 font-display flex items-center gap-2">
+                      {currentUser.name}
+                      {currentUser.role === 'ADMIN' && (
+                        <span className="inline-flex items-center rounded-md bg-red-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-red-700 border border-red-100">
+                          Administrador
+                        </span>
+                      )}
+                    </h1>
+                    
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5 text-xs text-slate-500 font-medium">
+                      <span className="flex items-center gap-1">
+                        <MapPin className="h-3.5 w-3.5 text-indigo-505" />
+                        {currentUser.location}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Calendar className="h-3.5 w-3.5 text-slate-400" />
+                        Registo: {new Date(currentUser.createdAt || '2026-01-01').toLocaleDateString('pt-PT')}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {!isEditing && (
+                      <button
+                        onClick={() => setIsEditing(true)}
+                        className="shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 border border-slate-200 hover:bg-slate-50 text-slate-750 text-xs font-bold rounded-lg transition"
+                      >
+                        <Edit3 className="h-3.5 w-3.5" />
+                        Editar Perfil
+                      </button>
+                    )}
+                  </div>
+                </div>
+                
+                <p className="text-xs sm:text-sm text-slate-600 mt-4 leading-relaxed bg-slate-50 border border-slate-100 rounded-xl p-3 shadow-inner">
+                  {currentUser.bio || 'Este utilizador ainda não preencheu a sua apresentação.'}
+                </p>
+              </div>
+            </div>
+
+            {/* Estatísticas de Feedback */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 border-t border-slate-100 bg-slate-50/50">
+              <div className="p-4 text-center border-r border-slate-100">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Avaliação Média</span>
+                <span className="inline-flex items-center gap-1 mt-1 text-lg font-black text-indigo-700 font-display">
+                  <Star className="h-4.5 w-4.5 fill-amber-400 text-amber-400" />
+                  {currentUser.rating || '4.9'}
+                </span>
+              </div>
+
+              <div className="p-4 text-center border-r border-slate-100">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Vendas Concluídas</span>
+                <span className="inline-flex items-center gap-1.5 mt-1 text-lg font-black text-slate-800 font-display">
+                  <ShoppingBag className="h-4.5 w-4.5 text-indigo-600" />
+                  {currentUser.totalSales || '15'}
+                </span>
+              </div>
+
+              <div className="p-4 text-center col-span-2 sm:col-span-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Anúncios Online</span>
+                <span className="inline-flex items-center gap-1.5 mt-1 text-lg font-black text-slate-800 font-display">
+                  {myActiveListings.length} artigos
+                </span>
+              </div>
+            </div>
           </div>
 
-          <div className="flex-1 min-w-0 pt-2 md:pt-0">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <h1 className="text-xl sm:text-2xl font-black text-slate-900 font-display flex items-center gap-2">
-                  {currentUser.name}
-                  {currentUser.role === 'ADMIN' && (
-                    <span className="inline-flex items-center rounded-md bg-red-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-red-700 border border-red-100">
-                      Administrador
-                    </span>
-                  )}
-                </h1>
-                
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5 text-xs text-slate-500 font-medium">
-                  <span className="flex items-center gap-1">
-                    <MapPin className="h-3.5 w-3.5 text-indigo-505" />
-                    {currentUser.location}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Calendar className="h-3.5 w-3.5 text-slate-400" />
-                    Registo: {new Date(currentUser.createdAt || '2026-01-01').toLocaleDateString('pt-PT')}
-                  </span>
+          {/* Formulário de Edição de Perfil */}
+          {isEditing && (
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-md p-6 mb-8 relative">
+              <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
+                <h3 className="font-display text-base font-extrabold text-slate-800">Modificar Dados do Perfil</h3>
+                <button
+                  onClick={() => setIsEditing(false)}
+                  className="p-1 rounded-lg text-slate-400 hover:bg-slate-50 hover:text-slate-650 animate-fadeIn"
+                >
+                  <X className="h-4.5 w-4.5" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Nome Completo</label>
+                  <input
+                    type="text"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm text-slate-800 font-medium outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Província em Angola</label>
+                  <select
+                    value={formData.location}
+                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm text-slate-800 font-medium outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  >
+                    {ANGOLA_PROVINCES.map((prov) => (
+                      <option key={prov} value={prov}>
+                        {prov}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Biografia / Apresentação</label>
+                  <textarea
+                    value={formData.bio}
+                    onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
+                    rows={3}
+                    placeholder="Introduza uma breve biografia..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm text-slate-800 font-medium outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 resize-none"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">URL da Fotografia de Perfil</label>
+                  <input
+                    type="text"
+                    value={formData.avatarUrl}
+                    onChange={(e) => setFormData({ ...formData, avatarUrl: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm text-slate-800 font-medium outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  />
                 </div>
               </div>
 
-              {!isEditing && (
+              <div className="mt-6 flex justify-end gap-2">
                 <button
-                  onClick={() => setIsEditing(true)}
-                  className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-750 text-xs font-bold rounded-lg transition"
+                  onClick={() => setIsEditing(false)}
+                  className="px-4 py-2 border border-slate-200 rounded-lg text-slate-600 text-xs font-bold hover:bg-slate-50"
                 >
-                  <Edit3 className="h-3.5 w-3.5" />
-                  Editar Perfil
+                  Cancelar
                 </button>
-              )}
+                <button
+                  onClick={handleSave}
+                  className="inline-flex items-center gap-1 px-4 py-2 bg-indigo-600 hover:bg-indigo-750 text-white text-xs font-bold rounded-lg transition"
+                >
+                  <Save className="h-4 w-4" />
+                  Gravar Perfil
+                </button>
+              </div>
             </div>
+          )}
+
+          {/* Secção / Banner Incentivo extra para Promover Negócio */}
+          <div className="bg-gradient-to-r from-indigo-900 to-slate-900 text-white rounded-2xl p-5 mb-8 flex flex-col sm:flex-row items-center justify-between gap-4 border border-slate-800 shadow-md">
+            <div>
+              <span className="text-[8px] font-black tracking-widest text-indigo-400 uppercase block">Monetização de audiência</span>
+              <h4 className="font-display font-extrabold text-sm text-white mt-1">Quer dar asas à sua empresa em Luanda e Benguela?</h4>
+              <p className="text-xs text-slate-350 mt-0.5 max-w-xl">
+                Configure pequenos banners de publicidade rotativa e receba cliques de todos os utilizadores ativos da nossa rede de desapegos.
+              </p>
+            </div>
+            <button
+              onClick={() => setViewMode('promote')}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs uppercase tracking-wide rounded-xl transition shadow-lg shrink-0 cursor-pointer"
+            >
+              Iniciar Campanha
+            </button>
+          </div>
+
+          {/* Meus Anúncios Ativos */}
+          <div className="mt-10">
+            <h2 className="font-display text-lg font-black text-slate-800 uppercase tracking-wider mb-4">Os meus Artigos Ativos à Venda</h2>
             
-            <p className="text-xs sm:text-sm text-slate-600 mt-4 leading-relaxed bg-slate-50 border border-slate-100 rounded-xl p-3 shadow-inner">
-              {currentUser.bio || 'Este utilizador ainda não preencheu a sua apresentação.'}
-            </p>
-          </div>
-        </div>
-
-        {/* Estatísticas de Feedback */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 border-t border-slate-100 bg-slate-50/50">
-          <div className="p-4 text-center border-r border-slate-100">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Avaliação Média</span>
-            <span className="inline-flex items-center gap-1 mt-1 text-lg font-black text-indigo-700 font-display">
-              <Star className="h-4.5 w-4.5 fill-amber-400 text-amber-400" />
-              {currentUser.rating || '4.9'}
-            </span>
-          </div>
-
-          <div className="p-4 text-center border-r border-slate-100">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Vendas Concluídas</span>
-            <span className="inline-flex items-center gap-1.5 mt-1 text-lg font-black text-slate-800 font-display">
-              <ShoppingBag className="h-4.5 w-4.5 text-indigo-600" />
-              {currentUser.totalSales || '15'}
-            </span>
-          </div>
-
-          <div className="p-4 text-center col-span-2 sm:col-span-1">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Anúncios Online</span>
-            <span className="inline-flex items-center gap-1.5 mt-1 text-lg font-black text-slate-800 font-display">
-              {myActiveListings.length} artigos
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Formulário de Edição de Perfil */}
-      {isEditing && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-md p-6 mb-8 relative">
-          <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
-            <h3 className="font-display text-base font-extrabold text-slate-800">Modificar Dados do Perfil</h3>
-            <button
-              onClick={() => setIsEditing(false)}
-              className="p-1 rounded-lg text-slate-400 hover:bg-slate-50 hover:text-slate-650"
-            >
-              <X className="h-4.5 w-4.5" />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Nome Completo</label>
-              <input
-                type="text"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm text-slate-800 font-medium outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Província em Angola</label>
-              <select
-                value={formData.location}
-                onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm text-slate-800 font-medium outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-              >
-                {ANGOLA_PROVINCES.map((prov) => (
-                  <option key={prov} value={prov}>
-                    {prov}
-                  </option>
+            {myActiveListings.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-slate-200/70 p-8 text-center shadow-inner">
+                <ShoppingBag className="h-10 w-10 text-slate-350 mx-auto mb-3" />
+                <h3 className="font-display font-extrabold text-slate-850 text-sm">Nenhum anúncio ativo publicado!</h3>
+                <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+                  Ganhe uns Kwanzas extra com as coisas que já não usa! É totalmente gratuito publicar na SegundaChance.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+                {myActiveListings.map((item) => (
+                  <ListingCard 
+                    key={item.id} 
+                    listing={item} 
+                    onOpenDetail={onOpenListingDetail} 
+                  />
                 ))}
-              </select>
-            </div>
-
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Biografia / Apresentação</label>
-              <textarea
-                value={formData.bio}
-                onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
-                rows={3}
-                placeholder="Introduza uma breve biografia..."
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm text-slate-800 font-medium outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 resize-none"
-              />
-            </div>
-
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">URL da Fotografia de Perfil</label>
-              <input
-                type="text"
-                value={formData.avatarUrl}
-                onChange={(e) => setFormData({ ...formData, avatarUrl: e.target.value })}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm text-slate-800 font-medium outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-              />
-            </div>
+              </div>
+            )}
           </div>
-
-          <div className="mt-6 flex justify-end gap-2">
-            <button
-              onClick={() => setIsEditing(false)}
-              className="px-4 py-2 border border-slate-200 rounded-lg text-slate-600 text-xs font-bold hover:bg-slate-50"
-            >
-              Cancelar
-            </button>
-            <button
-              onClick={handleSave}
-              className="inline-flex items-center gap-1 px-4 py-2 bg-indigo-600 hover:bg-indigo-750 text-white text-xs font-bold rounded-lg transition"
-            >
-              <Save className="h-4 w-4" />
-              Gravar Perfil
-            </button>
-          </div>
-        </div>
+        </>
       )}
-
-      {/* Meus Anúncios Ativos */}
-      <div className="mt-10">
-        <h2 className="font-display text-lg font-black text-slate-800 uppercase tracking-wider mb-4">Os meus Artigos Ativos à Venda</h2>
-        
-        {myActiveListings.length === 0 ? (
-          <div className="bg-white rounded-2xl border border-slate-200/70 p-8 text-center shadow-inner">
-            <ShoppingBag className="h-10 w-10 text-slate-350 mx-auto mb-3" />
-            <h3 className="font-display font-extrabold text-slate-850 text-sm">Nenhum anúncio ativo publicado!</h3>
-            <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
-              Ganhe uns Kwanzas extra com as coisas que já não usa! É totalmente gratuito publicar na SegundaChance.
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-            {myActiveListings.map((item) => (
-              <ListingCard 
-                key={item.id} 
-                listing={item} 
-                onOpenDetail={onOpenListingDetail} 
-              />
-            ))}
-          </div>
-        )}
-      </div>
     </div>
   );
 }
