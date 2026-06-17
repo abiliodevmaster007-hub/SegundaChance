@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { User, Listing, AdBanner, ANGOLA_PROVINCES } from '../types';
 import { MapPin, Calendar, Star, ShoppingBag, Edit3, Save, X, PlusCircle, Megaphone, ArrowLeft } from 'lucide-react';
 import ListingCard from './ListingCard';
@@ -19,6 +20,7 @@ export default function UserProfile({
   onOpenListingDetail,
   onAddPendingBanner
 }: UserProfileProps) {
+  const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<'profile' | 'promote'>('profile');
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
@@ -253,6 +255,30 @@ export default function UserProfile({
               className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs uppercase tracking-wide rounded-xl transition shadow-lg shrink-0 cursor-pointer"
             >
               Iniciar Campanha
+            </button>
+          </div>
+
+          {/* Secção de Termos e Privacidade de Dados */}
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 mb-8 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xs">
+            <div className="flex items-start gap-3">
+              <div className="h-9 w-9 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0 mt-0.5 border border-indigo-100">
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                </svg>
+              </div>
+              <div className="min-w-0">
+                <span className="text-[8px] font-black tracking-widest text-indigo-600 uppercase block">Uso e Segurança de Dados</span>
+                <h4 className="font-display font-extrabold text-sm text-slate-900 mt-0.5">Políticas de Privacidade & Termos Legais</h4>
+                <p className="text-xs text-slate-500 mt-1 max-w-2xl leading-relaxed">
+                  Para garantir a segurança, prevenir esquemas e ajudar no contínuo desenvolvimento da nossa app de desapegos em Angola, <strong>o SegundaChance reserva o direito de poder usar os dados dos clientes para melhorar ou ajudar a plataforma</strong>.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => navigate('/terms')}
+              className="px-4 py-2 border border-slate-200 hover:bg-slate-150 text-slate-700 font-extrabold text-xs uppercase tracking-wide rounded-xl transition shrink-0 cursor-pointer"
+            >
+              Consultar Termos
             </button>
           </div>
 

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ANGOLA_PROVINCES } from '../types';
 import { X, Mail, Lock, User, Phone, MapPin, AlertCircle, CheckCircle2 } from 'lucide-react';
 
@@ -15,6 +16,7 @@ export default function AuthModal({
   initialMode,
   onAuthSuccess
 }: AuthModalProps) {
+  const navigate = useNavigate();
   const [mode, setMode] = useState<'login' | 'register'>(initialMode);
   
   // Registration States
@@ -235,6 +237,23 @@ export default function AuthModal({
             >
               {loading ? 'A processar...' : mode === 'login' ? 'Entrar Agora' : 'Registar Conta'}
             </button>
+
+            {mode === 'register' && (
+              <p className="text-[11px] text-slate-400 text-center leading-normal mt-3">
+                Ao continuar você concorda com nossos{' '}
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    navigate('/terms');
+                  }}
+                  className="text-indigo-600 font-bold hover:underline cursor-pointer inline-block"
+                >
+                  termos e privacidades
+                </button>
+                .
+              </p>
+            )}
           </form>
 
           {/* Switch Mode Footer */}

@@ -10,6 +10,7 @@ import AdminPanel from './components/AdminPanel';
 import ProductCatalog from './components/ProductCatalog';
 import MessagesTab from './components/MessagesTab';
 import SellerTab from './components/SellerTab';
+import TermsTab from './components/TermsTab';
 import { webSocketService } from './websocketService';
 import { 
   User, 
@@ -470,8 +471,13 @@ export default function App() {
               </main>
             ) : ( <Navigate to="/" replace /> )
           } />
+          <Route path="/terms" element={
+            <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto w-full bg-white flex flex-col">
+              <TermsTab />
+            </main>
+          } />
         </Routes>
-        {activeTab !== 'admin' && <AdSidePanel ads={ads} />}
+        {activeTab !== 'admin' && activeTab !== 'terms' && <AdSidePanel ads={ads} />}
       </div>
 
       <div className="fixed bottom-16 right-4 sm:right-6 z-50 flex flex-col gap-2.5 max-w-sm w-full pointer-events-none">
@@ -492,7 +498,17 @@ export default function App() {
       </div>
 
       <footer className="h-12 bg-white border-t border-slate-200 px-4 sm:px-8 flex items-center justify-between shrink-0 text-slate-400 font-bold uppercase tracking-widest text-[9px]">
-        <div><span>© 2026 SegundaChance Angola</span></div>
+        <div className="flex items-center gap-2">
+          <span>© 2026 SegundaChance Angola</span>
+          <span className="text-slate-200">•</span>
+          <button 
+            id="footer-terms-btn" 
+            onClick={() => setActiveTab('terms')} 
+            className="hover:text-indigo-650 transition cursor-pointer font-extrabold uppercase"
+          >
+            Termos & Privacidade
+          </button>
+        </div>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-1.5">
             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
