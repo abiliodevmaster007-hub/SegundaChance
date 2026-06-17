@@ -1,0 +1,6 @@
+{
+  "name": "SegundaChance",
+  "description": "Um marketplace peer-to-peer focado no mercado angolano/lusófono para vender e comprar pertences de forma simples, segura e intuitiva.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
