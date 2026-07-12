@@ -5,6 +5,9 @@ import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
+    define: {
+      global: 'window',
+    },
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
@@ -17,6 +20,19 @@ export default defineConfig(() => {
       hmr: process.env.DISABLE_HMR !== 'true',
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      proxy: {
+        '/api': {
+          target: 'http://localhost:8080',
+          changeOrigin: true,
+          secure: false,
+        },
+        '/ws': {
+          target: 'http://localhost:8080',
+          ws: true,
+          changeOrigin: true,
+          secure: false,
+        },
+      }
     },
   };
 });

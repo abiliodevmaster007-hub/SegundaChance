@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Listing, CATEGORIES, ANGOLA_PROVINCES } from '../types';
-import { SlidersHorizontal, ShieldCheck, Search, FolderOpen, Loader2 } from 'lucide-react';
+import { SlidersHorizontal, ShieldCheck, Search, FolderOpen, Loader2, ChevronDown } from 'lucide-react';
 import ListingCard from './ListingCard';
 
 interface ProductCatalogProps {
@@ -38,6 +38,12 @@ export default function ProductCatalog({
   onResetFilters,
   onOpenListingDetail
 }: ProductCatalogProps) {
+  const [visibleCount, setVisibleCount] = useState(8);
+
+  useEffect(() => {
+    setVisibleCount(8);
+  }, [search, category, location, minPrice, maxPrice]);
+
   return (
     <div className="flex flex-1 overflow-hidden w-full">
       
@@ -206,7 +212,7 @@ export default function ProductCatalog({
           </h1>
           
           <span className="text-xs text-slate-400 font-mono font-bold bg-white px-2.5 py-1 rounded-md border border-slate-200/60 shadow-sm">
-            {listings.length} {listings.length === 1 ? 'artigo disponível' : 'artigos disponíveis'}
+            {listings.length === 0 ? 'Nenhum artigo' : `A mostrar ${Math.min(visibleCount, listings.length)} de ${listings.length} ${listings.length === 1 ? 'artigo disponível' : 'artigos disponíveis'}`}
           </span>
         </div>
 
@@ -233,14 +239,30 @@ export default function ProductCatalog({
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-6 animate-fadeIn">
-            {listings.map((item) => (
-              <ListingCard 
-                key={item.id} 
-                listing={item} 
-                onOpenDetail={onOpenListingDetail} 
-              />
-            ))}
+          <div className="space-y-8 flex flex-col">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-6 animate-fadeIn">
+              {listings.slice(0, visibleCount).map((item) => (
+                <ListingCard 
+                  key={item.id} 
+                  listing={item} 
+                  onOpenDetail={onOpenListingDetail} 
+                />
+              ))}
+            </div>
+
+            {visibleCount < listings.length && (
+              <div id="load-more-container" className="flex justify-center pt-4 pb-8">
+                <button
+                  id="load-more-listings-btn"
+                  type="button"
+                  onClick={() => setVisibleCount((prev) => prev + 8)}
+                  className="px-6 py-3 bg-indigo-650 hover:bg-slate-900 border border-indigo-700/10 text-white hover:text-indigo-200 text-xs font-black uppercase tracking-wider rounded-xl transition duration-200 shadow-sm flex items-center gap-2 cursor-pointer"
+                >
+                  <span>Ver Mais Desapegos</span>
+                  <ChevronDown className="h-4 w-4" />
+                </button>
+              </div>
+            )}
           </div>
         )}
       </main>

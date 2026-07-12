@@ -140,10 +140,10 @@ export default function Header({
 
               <button
                 onClick={onOpenCreateListing}
-                className="inline-flex items-center space-x-2 px-4 py-2 text-sm font-bold rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 transition shadow-sm hover:shadow active:scale-95 duration-150"
+                className="inline-flex items-center space-x-1.5 px-3.5 py-2 text-sm font-semibold rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 transition"
               >
                 <PlusCircle className="h-4 w-4" />
-                <span className="hidden sm:inline"> + Publicar Anúncio</span>
+                <span className="hidden sm:inline">Publicar Anúncio</span>
               </button>
 
               {/* User Dropdown / Info Block */}

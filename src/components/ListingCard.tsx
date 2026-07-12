@@ -58,11 +58,6 @@ export default function ListingCard({ listing, onOpenDetail }: ListingCardProps)
           </span>
         </div>
 
-        {/* Location tag in top-right */}
-        <div className="absolute top-3 right-3 bg-white/90 px-2 py-0.5 rounded text-[10px] font-bold text-slate-700 border border-slate-100 shadow-sm">
-          {listing.location.toUpperCase()}
-        </div>
-
         {/* Status indicator on image */}
         {listing.status === 'vendido' && (
           <div className="absolute inset-0 bg-slate-900/65 backdrop-blur-[2px] flex items-center justify-center">
@@ -89,17 +84,17 @@ export default function ListingCard({ listing, onOpenDetail }: ListingCardProps)
         </p>
 
         {/* Footer Area: Price, Location & Details */}
-        <div className="mt-auto pt-4 flex items-end justify-between border-t border-slate-100">
+        <div className="mt-auto pt-3 border-t border-slate-100 flex flex-col gap-2">
           <div>
-            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest block mb-0.5">Preço pedido</span>
-            <span className="font-display text-lg font-black text-slate-900">
+            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest block">Preço pedido</span>
+            <span className="font-display text-base font-black text-slate-900">
               {formatKwanza(listing.price)}
             </span>
           </div>
 
-          <div className="flex items-center space-x-1 text-slate-400">
-            <MapPin className="h-4 w-4 text-indigo-500 shrink-0" />
-            <span className="text-xs font-medium text-slate-500 truncate max-w-[100px]">
+          <div className="flex items-center space-x-1 text-slate-500">
+            <MapPin className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
+            <span className="text-xs font-semibold text-slate-600 truncate">
               {listing.location}
             </span>
           </div>

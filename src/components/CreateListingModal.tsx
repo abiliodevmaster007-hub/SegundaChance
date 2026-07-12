@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ANGOLA_PROVINCES, CATEGORIES, CONDITIONS } from '../types';
 import { X, Camera, AlertCircle, Sparkles, Check } from 'lucide-react';
+import { getApiUrl } from '../apiConfig';
 
 interface CreateListingModalProps {
   isOpen: boolean;
@@ -105,7 +106,7 @@ export default function CreateListingModal({
     setLoading(true);
 
     try {
-      const response = await fetch('/api/listings', {
+      const response = await fetch(getApiUrl('/api/listings'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

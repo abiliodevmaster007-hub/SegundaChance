@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ANGOLA_PROVINCES } from '../types';
 import { X, Mail, Lock, User, Phone, MapPin, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { getApiUrl } from '../apiConfig';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -38,7 +39,7 @@ export default function AuthModal({
     setSuccess(null);
     setLoading(true);
 
-    const url = mode === 'login' ? '/api/auth/login' : '/api/auth/register';
+    const url = getApiUrl(mode === 'login' ? '/api/auth/login' : '/api/auth/register');
     const payload = mode === 'login' 
       ? { email, password }
       : { name, email, password, phone, location };
