@@ -57,15 +57,7 @@ export function useAppLogic() {
     try {
       const saved = localStorage.getItem('sc_user');
       if (saved) {
-        const parsed = JSON.parse(saved);
-        if (
-          parsed.email === 'abiliodevmaster007@gmail.com' ||
-          parsed.email?.includes('admin') ||
-          parsed.role === 'ADMIN'
-        ) {
-          parsed.role = 'ADMIN';
-        }
-        return parsed;
+        return JSON.parse(saved);
       }
     } catch {}
     return null;
@@ -181,27 +173,60 @@ export function useAppLogic() {
     fetchBanners();
   }, []);
 
-  // Subscrição em tempo real para mensagens de chat
+  // Ciclo de vida WebSocket STOMP sincronizado com o token JWT do utilizador autenticado
   useEffect(() => {
-    if (!currentUser) {
+    if (currentUser && authToken) {
+      webSocketService.connect(authToken);
+    } else {
+      webSocketService.disconnect();
       setNotificationCount(0);
+    }
+  }, [currentUser?.id, authToken]);
+
+  // Subscrição em tempo real para notificações pessoais de mensagens
+  useEffect(() => {
+    if (!currentUser || !authToken) {
       return;
     }
-    const subscription = webSocketService.subscribe(`/topic/messages/${currentUser.id}`, (msg: any) => {
+
+    const handleIncomingMessage = (msg: Message) => {
+      if (!msg || !msg.id) return;
       setAdminStats((prev) => ({ ...prev, messagesSentToday: prev.messagesSentToday + 1 }));
       const isOpen = selectedChat && selectedChat.id === msg.chatId && activeTab === 'messages';
       if (isOpen) {
         setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
-      } else {
+      } else if (msg.senderId !== currentUser.id) {
         setNotificationCount((p) => p + 1);
-        addToast(
-          msg.senderId === currentUser.id ? 'A sua resposta' : 'Nova mensagem recebida',
-          msg.text
-        );
+        addToast('Nova mensagem recebida', msg.text);
       }
+    };
+
+    const subMessages = webSocketService.subscribe(
+      `/topic/messages/${currentUser.id}`,
+      handleIncomingMessage
+    );
+    const subUserNotifications = webSocketService.subscribe(
+      `/topic/users/${currentUser.id}/notifications`,
+      handleIncomingMessage
+    );
+
+    return () => {
+      subMessages.unsubscribe();
+      subUserNotifications.unsubscribe();
+    };
+  }, [currentUser, authToken, selectedChat, activeTab]);
+
+  // Subscrição em tempo real ao canal do chat ativo (/topic/chats/{chatId})
+  useEffect(() => {
+    if (!selectedChat || !currentUser || !authToken) {
+      return;
+    }
+    const subChat = webSocketService.subscribe(`/topic/chats/${selectedChat.id}`, (msg: Message) => {
+      if (!msg || !msg.id) return;
+      setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
     });
-    return () => subscription.unsubscribe();
-  }, [currentUser, selectedChat, activeTab]);
+    return () => subChat.unsubscribe();
+  }, [selectedChat?.id, currentUser?.id, authToken]);
 
   useEffect(() => {
     fetchListings();
@@ -236,16 +261,15 @@ export function useAppLogic() {
 
   // Auth Action handlers
   const handleAuthSuccess = (u: User, tok: string) => {
-    if (u.email === 'abiliodevmaster007@gmail.com' || u.email.includes('admin')) {
-      u.role = 'ADMIN';
-    }
     setCurrentUser(u);
     setAuthToken(tok);
     localStorage.setItem('sc_user', JSON.stringify(u));
     localStorage.setItem('sc_token', tok);
+    webSocketService.connect(tok);
   };
 
   const handleLogout = () => {
+    webSocketService.disconnect();
     setCurrentUser(null);
     setAuthToken(null);
     localStorage.removeItem('sc_user');
@@ -296,7 +320,10 @@ export function useAppLogic() {
     try {
       await fetch(getApiUrl(`/api/listings/${listingId}/status`), {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
         body: JSON.stringify({ status: normalizedStatus }),
       });
     } catch {}
@@ -310,16 +337,22 @@ export function useAppLogic() {
       activeListings: Math.max(0, prev.activeListings - 1),
     }));
     try {
-      await fetch(getApiUrl(`/api/listings/${listingId}`), { method: 'DELETE' });
+      await fetch(getApiUrl(`/api/listings/${listingId}`), {
+        method: 'DELETE',
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+      });
     } catch {}
   };
 
-  // Gestão de Banners sincronizada com a API
+  // Gestão de Banners sincronizada com a API e autenticada via JWT
   const handleCreateBanner = async (bannerData: Omit<AdBanner, 'id' | 'createdAt'>) => {
     try {
       const res = await fetch(getApiUrl('/api/banners'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
         body: JSON.stringify(bannerData),
       });
       if (res.ok) {
@@ -348,6 +381,7 @@ export function useAppLogic() {
     try {
       await fetch(getApiUrl(`/api/banners/${bannerId}/toggle`), {
         method: 'PATCH',
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
       });
     } catch {}
   };
@@ -357,6 +391,7 @@ export function useAppLogic() {
     try {
       await fetch(getApiUrl(`/api/banners/${bannerId}`), {
         method: 'DELETE',
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
       });
     } catch {}
   };
@@ -479,7 +514,7 @@ export function useAppLogic() {
       });
       const chat = await res.json();
       if (!res.ok) {
-        addToast('Aviso', chat.error || 'Não foi possível iniciar a conversa.');
+        addToast('Aviso', chat.error || chat.message || 'Não foi possível iniciar a conversa.');
         return;
       }
       setSelectedListing(null);
@@ -488,6 +523,10 @@ export function useAppLogic() {
     } catch {}
   };
 
+  /**
+   * Único fluxo de persistência de mensagens:
+   * POST /api/chats/{chatId}/messages persiste no servidor e difunde via WebSocket.
+   */
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedChat || !typedMessage.trim() || !authToken || !currentUser) return;
@@ -505,8 +544,8 @@ export function useAppLogic() {
       });
       if (res.ok) {
         const sent = await res.json();
-        webSocketService.send('/app/chat.send', sent);
         setMessages((prev) => (prev.some((m) => m.id === sent.id) ? prev : [...prev, sent]));
+        webSocketService.broadcastPersistedMessage(sent);
         fetchChatsSilently();
       }
     } catch {

@@ -1,14 +1,13 @@
 /**
  * SERVIÇO WEBSOCKET REAL (SegundaChance Angola)
  *
- * Implementa ligação WebSocket usando STOMP over SockJS quando VITE_API_URL
- * aponta para uma instância externa do Spring Boot, e utiliza BroadcastChannel
- * + Event Bus em memória quando executado no gateway full-stack integrado,
- * evitando erros de polling em /ws/info.
+ * Implementa ligação WebSocket STOMP over SockJS autenticada via JWT (cabeçalho Authorization Bearer),
+ * ciclo de vida explícito connect(token) / disconnect(), gestão multi-listener por tópico e
+ * sincronização local via BroadcastChannel no modo gateway full-stack integrado.
  */
 
 import SockJS from 'sockjs-client';
-import { Client, IMessage } from '@stomp/stompjs';
+import { Client, IMessage, StompSubscription } from '@stomp/stompjs';
 import { WS_BASE_URL } from './apiConfig';
 
 type CallbackType = (message: any) => void;
@@ -16,14 +15,15 @@ type CallbackType = (message: any) => void;
 class WebSocketService {
   private stompClient: Client | null = null;
   private connected: boolean = false;
+  private currentToken: string | null = null;
   private connectionListeners: (() => void)[] = [];
-  private pendingSubscriptions: Map<string, CallbackType[]> = new Map();
-  private activeSubscriptions: Map<string, any> = new Map();
-  private localTopicListeners: Map<string, Set<CallbackType>> = new Map();
+  private topicListeners: Map<string, Set<CallbackType>> = new Map();
+  private activeStompSubscriptions: Map<string, StompSubscription> = new Map();
   private broadcastChannel: BroadcastChannel | null = null;
+  private readonly hasExternalSpringUrl: boolean;
 
   constructor() {
-    const hasExternalSpringUrl = Boolean(
+    this.hasExternalSpringUrl = Boolean(
       (import.meta as any).env?.VITE_API_URL &&
         String((import.meta as any).env.VITE_API_URL).trim() !== ''
     );
@@ -37,22 +37,53 @@ class WebSocketService {
             this.dispatchLocalMessage(destination, body);
           }
         };
-      } catch (e) {
+      } catch {
         // Ignorar se BroadcastChannel estiver restrito no navegador
       }
     }
 
-    if (!hasExternalSpringUrl) {
-      // Modo gateway full-stack integrado: ativo imediatamente sem polling SockJS externo
+    if (!this.hasExternalSpringUrl) {
+      this.connected = true;
+    }
+  }
+
+  /**
+   * Inicia ou atualiza a conexão STOMP autenticada com o token JWT do utilizador.
+   */
+  public connect(token?: string | null) {
+    const normalizedToken = token ? token.trim() : null;
+
+    if (!this.hasExternalSpringUrl) {
+      this.currentToken = normalizedToken;
       this.connected = true;
       return;
     }
 
+    if (!normalizedToken) {
+      this.disconnect();
+      return;
+    }
+
+    // Se já estiver ligado com o mesmo token JWT, mantém a sessão ativa
+    if (this.stompClient && this.stompClient.active && this.currentToken === normalizedToken) {
+      return;
+    }
+
+    if (this.stompClient) {
+      try {
+        this.stompClient.deactivate();
+      } catch {}
+      this.activeStompSubscriptions.clear();
+    }
+
+    this.currentToken = normalizedToken;
+
     this.stompClient = new Client({
-      webSocketFactory: () => {
-        return new SockJS(WS_BASE_URL) as any;
+      webSocketFactory: () => new SockJS(WS_BASE_URL) as any,
+      connectHeaders: {
+        Authorization: `Bearer ${normalizedToken}`,
       },
-      reconnectDelay: 8000,
+      reconnectDelay: 5000,
       heartbeatIncoming: 4000,
       heartbeatOutgoing: 4000,
     });
@@ -62,24 +93,55 @@ class WebSocketService {
       this.connectionListeners.forEach((listener) => {
         try {
           listener();
-        } catch (e) {}
+        } catch {}
       });
       this.connectionListeners = [];
 
-      this.pendingSubscriptions.forEach((callbacks, destination) => {
-        this.subscribeToDestination(destination, callbacks);
+      // Re-subscreve todos os tópicos ativos após conexão ou reconexão STOMP
+      this.topicListeners.forEach((callbacks, destination) => {
+        if (callbacks.size > 0) {
+          this.ensureStompSubscription(destination);
+        }
       });
-      this.pendingSubscriptions.clear();
     };
 
     this.stompClient.onDisconnect = () => {
       this.connected = false;
+      this.activeStompSubscriptions.clear();
     };
 
-    this.stompClient.onStompError = () => {};
-    this.stompClient.onWebSocketError = () => {};
+    this.stompClient.onStompError = () => {
+      this.connected = false;
+    };
+
+    this.stompClient.onWebSocketClose = () => {
+      this.connected = false;
+      this.activeStompSubscriptions.clear();
+    };
 
     this.stompClient.activate();
+  }
+
+  /**
+   * Encerra a sessão WebSocket STOMP e limpa subscrições remotas no logout.
+   */
+  public disconnect() {
+    this.currentToken = null;
+    this.activeStompSubscriptions.forEach((sub) => {
+      try {
+        sub.unsubscribe();
+      } catch {}
+    });
+    this.activeStompSubscriptions.clear();
+
+    if (this.stompClient) {
+      try {
+        this.stompClient.deactivate();
+      } catch {}
+      this.stompClient = null;
+    }
+
+    this.connected = !this.hasExternalSpringUrl;
   }
 
   public isConnected(): boolean {
@@ -95,88 +157,93 @@ class WebSocketService {
   }
 
   private dispatchLocalMessage(destination: string, body: any) {
-    const listeners = this.localTopicListeners.get(destination);
+    const listeners = this.topicListeners.get(destination);
     if (listeners) {
       listeners.forEach((cb) => {
         try {
           cb(body);
-        } catch (e) {}
+        } catch {}
       });
     }
   }
 
+  /**
+   * Subscreve um tópico STOMP/local com suporte seguro a múltiplos ouvintes simultâneos.
+   */
   public subscribe(destination: string, callback: CallbackType) {
-    if (!this.localTopicListeners.has(destination)) {
-      this.localTopicListeners.set(destination, new Set());
+    if (!this.topicListeners.has(destination)) {
+      this.topicListeners.set(destination, new Set());
     }
-    this.localTopicListeners.get(destination)!.add(callback);
+    const listeners = this.topicListeners.get(destination)!;
+    listeners.add(callback);
 
-    if (!this.stompClient) {
-      return {
-        unsubscribe: () => {
-          this.localTopicListeners.get(destination)?.delete(callback);
-        },
-      };
+    if (this.stompClient && this.connected) {
+      this.ensureStompSubscription(destination);
     }
-
-    if (!this.connected) {
-      if (!this.pendingSubscriptions.has(destination)) {
-        this.pendingSubscriptions.set(destination, []);
-      }
-      this.pendingSubscriptions.get(destination)!.push(callback);
-
-      return {
-        unsubscribe: () => {
-          this.localTopicListeners.get(destination)?.delete(callback);
-          const list = this.pendingSubscriptions.get(destination);
-          if (list) {
-            const index = list.indexOf(callback);
-            if (index !== -1) list.splice(index, 1);
-          }
-        },
-      };
-    }
-
-    return this.subscribeToDestination(destination, [callback]);
-  }
-
-  private subscribeToDestination(destination: string, callbacks: CallbackType[]) {
-    if (!this.stompClient) {
-      return { unsubscribe: () => {} };
-    }
-
-    const subscription = this.stompClient.subscribe(destination, (stompMessage: IMessage) => {
-      try {
-        const parsedBody = JSON.parse(stompMessage.body);
-        callbacks.forEach((cb) => cb(parsedBody));
-      } catch (e) {}
-    });
-
-    this.activeSubscriptions.set(destination, subscription);
 
     return {
       unsubscribe: () => {
-        this.localTopicListeners.get(destination)?.forEach((cb) => {
-          if (callbacks.includes(cb)) {
-            this.localTopicListeners.get(destination)?.delete(cb);
+        const currentSet = this.topicListeners.get(destination);
+        if (currentSet) {
+          currentSet.delete(callback);
+          if (currentSet.size === 0) {
+            this.topicListeners.delete(destination);
+            const stompSub = this.activeStompSubscriptions.get(destination);
+            if (stompSub) {
+              try {
+                stompSub.unsubscribe();
+              } catch {}
+              this.activeStompSubscriptions.delete(destination);
+            }
           }
-        });
-        subscription.unsubscribe();
-        this.activeSubscriptions.delete(destination);
+        }
       },
     };
   }
 
-  public send(destination: string, body: any) {
-    // Se for envio de mensagem de chat, notifica destinatário localmente e entre abas
-    if (destination === '/app/chat.send' && body && body.recipientId) {
-      const targetTopic = `/topic/messages/${body.recipientId}`;
-      this.dispatchLocalMessage(targetTopic, body);
-      try {
-        this.broadcastChannel?.postMessage({ destination: targetTopic, body });
-      } catch (e) {}
+  private ensureStompSubscription(destination: string) {
+    if (!this.stompClient || !this.connected || this.activeStompSubscriptions.has(destination)) {
+      return;
     }
 
+    const sub = this.stompClient.subscribe(destination, (stompMessage: IMessage) => {
+      try {
+        const parsedBody = JSON.parse(stompMessage.body);
+        this.dispatchLocalMessage(destination, parsedBody);
+      } catch {}
+    });
+
+    this.activeStompSubscriptions.set(destination, sub);
+  }
+
+  /**
+   * Propaga uma mensagem já persistida pela API REST (POST /api/chats/{chatId}/messages)
+   * para ouvintes locais e outras abas do navegador sem duplicar a persistência no backend.
+   */
+  public broadcastPersistedMessage(savedMessage: any) {
+    if (!savedMessage) return;
+
+    if (savedMessage.chatId) {
+      const chatTopic = `/topic/chats/${savedMessage.chatId}`;
+      this.dispatchLocalMessage(chatTopic, savedMessage);
+      try {
+        this.broadcastChannel?.postMessage({ destination: chatTopic, body: savedMessage });
+      } catch {}
+    }
+
+    if (savedMessage.recipientId) {
+      const recipientTopic = `/topic/messages/${savedMessage.recipientId}`;
+      this.dispatchLocalMessage(recipientTopic, savedMessage);
+      try {
+        this.broadcastChannel?.postMessage({ destination: recipientTopic, body: savedMessage });
+      } catch {}
+    }
+  }
+
+  /**
+   * Envia eventos efémeros (ex: indicador de digitação /app/chat.typing) via STOMP.
+   */
+  public send(destination: string, body: any) {
     if (this.stompClient && this.connected) {
       this.stompClient.publish({
         destination,

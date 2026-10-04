@@ -1,11 +1,11 @@
 package com.kuenda.marketplace.controller;
 
 import com.kuenda.marketplace.dto.ai.*;
+import com.kuenda.marketplace.security.SecurityUtils;
 import com.kuenda.marketplace.service.AiMarketplaceAssistantService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
@@ -14,7 +14,8 @@ import java.util.Map;
 
 /**
  * Controlador REST do Kuenda AI — expõe os endpoints do Assistente Inteligente e
- * as ferramentas de servidor (Spring AI Function Calling) para Compradores e Vendedores.
+ * as ferramentas determinísticas de servidor para Compradores e Vendedores,
+ * com validação estrita de propriedade (sellerId e chatId) a partir do token JWT.
  */
 @RestController
 @RequestMapping("/api/ai")
@@ -43,14 +44,14 @@ public class AiAssistantController {
 
     @PostMapping("/chat")
     public ResponseEntity<AiAssistantResponseDTO> chatWithAssistant(@RequestBody AiAssistantRequestDTO request) {
-        enrichWithAuthenticatedUser(request);
+        enforceAuthenticatedSellerScope(request);
         AiAssistantResponseDTO response = aiAssistantService.processChatInteraction(request);
         return ResponseEntity.ok(response);
     }
 
     @PostMapping("/optimize-listing")
     public ResponseEntity<AiAssistantResponseDTO> optimizeListing(@RequestBody AiAssistantRequestDTO request) {
-        enrichWithAuthenticatedUser(request);
+        enforceAuthenticatedSellerScope(request);
         request.setRoleContext("SELLER");
 
         AiOptimizedListingDraftDTO draft = aiAssistantService.executeListingOptimizationTool(
@@ -85,7 +86,7 @@ public class AiAssistantController {
 
     @PostMapping("/price-analysis")
     public ResponseEntity<AiAssistantResponseDTO> analyzePrice(@RequestBody AiAssistantRequestDTO request) {
-        enrichWithAuthenticatedUser(request);
+        enforceAuthenticatedSellerScope(request);
         AiPriceAnalysisDTO analysis = aiAssistantService.executePriceAnalysisTool(
                 request.getCategory(),
                 request.getLocation(),
@@ -110,7 +111,7 @@ public class AiAssistantController {
     @PostMapping("/seller-diagnostics")
     public ResponseEntity<AiAssistantResponseDTO> diagnoseSeller(@RequestBody(required = false) AiAssistantRequestDTO request) {
         AiAssistantRequestDTO req = request != null ? request : new AiAssistantRequestDTO();
-        enrichWithAuthenticatedUser(req);
+        enforceAuthenticatedSellerScope(req);
 
         AiSellerDiagnosticDTO diagnostic = aiAssistantService.executeSellerDiagnosticsTool(req.getSellerId());
         String provider = aiAssistantService.resolveActiveProvider();
@@ -127,9 +128,29 @@ public class AiAssistantController {
         return ResponseEntity.ok(response);
     }
 
+    @GetMapping("/seller-diagnostics/{sellerId}")
+    public ResponseEntity<AiAssistantResponseDTO> diagnoseSellerById(@PathVariable String sellerId) {
+        // Impede que um utilizador consulte o diagnóstico de outro vendedor (HTTP 403 Forbidden)
+        SecurityUtils.requireOwnerOrAdmin(sellerId, "o diagnóstico deste vendedor");
+
+        AiSellerDiagnosticDTO diagnostic = aiAssistantService.executeSellerDiagnosticsTool(sellerId);
+        String provider = aiAssistantService.resolveActiveProvider();
+
+        AiAssistantResponseDTO response = AiAssistantResponseDTO.builder()
+                .reply("Diagnóstico completo do seu portfólio de vendas concluído com sucesso.")
+                .providerUsed(provider)
+                .modelUsed(aiAssistantService.resolveActiveModel(provider))
+                .toolsExecuted(List.of("diagnoseSellerPortfolioTool"))
+                .sellerDiagnostic(diagnostic)
+                .timestamp(Instant.now().toString())
+                .build();
+
+        return ResponseEntity.ok(response);
+    }
+
     @PostMapping("/chat-suggestions")
     public ResponseEntity<AiAssistantResponseDTO> suggestChatReplies(@RequestBody AiAssistantRequestDTO request) {
-        enrichWithAuthenticatedUser(request);
+        enforceAuthenticatedSellerScope(request);
         List<String> replies = aiAssistantService.executeChatReplySuggestionsTool(
                 request.getChatId(),
                 request.getRoleContext()
@@ -148,14 +169,18 @@ public class AiAssistantController {
         return ResponseEntity.ok(response);
     }
 
-    private void enrichWithAuthenticatedUser(AiAssistantRequestDTO request) {
-        if (request.getSellerId() == null || request.getSellerId().isBlank()) {
-            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            if (auth != null && auth.isAuthenticated()
-                    && auth.getPrincipal() instanceof String principal
-                    && !"anonymousUser".equals(principal)) {
-                request.setSellerId(principal);
+    /**
+     * Garante que o sellerId não seja manipulado pelo cliente no JSON:
+     * - Se o cliente enviar um sellerId diferente do seu próprio ID no JWT (e não for ADMIN), lança AccessDeniedException (403).
+     * - Caso contrário, fixa o sellerId como o ID do utilizador autenticado no JWT.
+     */
+    private void enforceAuthenticatedSellerScope(AiAssistantRequestDTO request) {
+        SecurityUtils.getCurrentUserIdOpt().ifPresent(currentUserId -> {
+            if (StringUtils.hasText(request.getSellerId()) && !request.getSellerId().trim().equals(currentUserId)) {
+                SecurityUtils.requireOwnerOrAdmin(request.getSellerId().trim(), "o diagnóstico deste vendedor");
+            } else {
+                request.setSellerId(currentUserId);
             }
-        }
+        });
     }
 }

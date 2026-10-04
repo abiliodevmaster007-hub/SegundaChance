@@ -4,9 +4,11 @@ import com.kuenda.marketplace.dto.AdminDashboardStatsDTO;
 import com.kuenda.marketplace.dto.PlatformManagementDTO;
 import com.kuenda.marketplace.model.Chat;
 import com.kuenda.marketplace.model.User;
+import com.kuenda.marketplace.security.SecurityUtils;
 import com.kuenda.marketplace.service.AdminService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -16,6 +18,7 @@ import java.util.Map;
 @RequestMapping("/api/admin")
 @RequiredArgsConstructor
 @CrossOrigin(origins = "*")
+@PreAuthorize("hasRole('ADMIN')")
 public class AdminController {
 
     private final AdminService adminService;
@@ -43,6 +46,11 @@ public class AdminController {
 
     @DeleteMapping("/users/{id}")
     public ResponseEntity<Void> deleteUser(@PathVariable String id) {
+        SecurityUtils.getCurrentUserIdOpt().ifPresent(currentId -> {
+            if (currentId.equals(id)) {
+                throw new IllegalArgumentException("Um administrador não pode eliminar a sua própria conta ativa.");
+            }
+        });
         adminService.deleteUser(id);
         return ResponseEntity.noContent().build();
     }

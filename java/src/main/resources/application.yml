@@ -1,34 +1,32 @@
 server:
-  port: 8080
+  port: "${PORT:8080}"
   servlet:
     context-path: /
 
 spring:
   application:
     name: kuenda-marketplace-backend
-  datasource:
-    url: jdbc:h2:mem:kuendadb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
-    driver-class-name: org.h2.Driver
-    username: sa
-    password: 
-  h2:
-    console:
-      enabled: true
-      path: /h2-console
+  profiles:
+    active: "${SPRING_PROFILES_ACTIVE:dev}"
   jpa:
-    database-platform: org.hibernate.dialect.H2Dialect
-    hibernate:
-      ddl-auto: update
-    show-sql: false
+    open-in-view: false
     properties:
       hibernate:
         format_sql: true
 
-# Configurações de CORS, Segurança JWT e Configuração Híbrida Multi-Provedor Spring AI
+# Configurações de CORS, Segurança JWT, Bootstrap de Admin e Kuenda AI
 app:
   jwt:
     secret: "${JWT_SECRET}"
-    expiration-ms: 86400000 # 24 horas em milissegundos
+    expiration-ms: "${JWT_EXPIRATION_MS:86400000}" # 24 horas em milissegundos
+  admin:
+    bootstrap:
+      enabled: "${ADMIN_BOOTSTRAP_ENABLED:true}"
+      email: "${ADMIN_BOOTSTRAP_EMAIL:}"
+      password: "${ADMIN_BOOTSTRAP_PASSWORD:}"
+      name: "${ADMIN_BOOTSTRAP_NAME:Administrador SegundaChance}"
+      phone: "${ADMIN_BOOTSTRAP_PHONE:+244 923 000 000}"
+      location: "${ADMIN_BOOTSTRAP_LOCATION:Luanda}"
   cors:
     allowed-origins:
       - "http://localhost:3000"
@@ -36,7 +34,6 @@ app:
       - "http://localhost:5173"
       - "https://*.run.app"
   ai:
-    # Opções: HYBRID (auto-seleciona pela chave disponível), GEMINI ou OPENAI
     provider: "${AI_PROVIDER:HYBRID}"
     gemini:
       api-key: "${GEMINI_API_KEY:}"

@@ -5,13 +5,13 @@ import com.kuenda.marketplace.dto.StatusUpdateDTO;
 import com.kuenda.marketplace.model.Listing;
 import com.kuenda.marketplace.model.User;
 import com.kuenda.marketplace.repository.UserRepository;
+import com.kuenda.marketplace.security.SecurityUtils;
 import com.kuenda.marketplace.service.ListingService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -30,8 +30,28 @@ public class ListingController {
             @RequestParam(required = false) String category,
             @RequestParam(required = false) String location,
             @RequestParam(required = false) String search,
-            @RequestParam(required = false) String sellerId) {
+            @RequestParam(required = false) String sellerId,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size) {
+        if (page != null || size != null) {
+            int p = page != null ? page : 0;
+            int s = size != null ? size : 50;
+            return ResponseEntity.ok(
+                    listingService.getListingsPage(category, location, search, sellerId, p, s).getContent()
+            );
+        }
         return ResponseEntity.ok(listingService.getAllListings(category, location, search, sellerId));
+    }
+
+    @GetMapping("/page")
+    public ResponseEntity<Page<Listing>> getListingsPage(
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) String location,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String sellerId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return ResponseEntity.ok(listingService.getListingsPage(category, location, search, sellerId, page, size));
     }
 
     @GetMapping("/{id}")
@@ -48,21 +68,14 @@ public class ListingController {
 
     @PostMapping
     public ResponseEntity<Listing> createListing(@Valid @RequestBody ListingRequestDTO dto) {
-        // Se o sellerId não for enviado explicitamente no corpo, resolve pelo utilizador autenticado no JWT
-        if (dto.getSellerId() == null || dto.getSellerId().trim().isEmpty()) {
-            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            if (auth != null && auth.getPrincipal() != null && !"anonymousUser".equals(auth.getPrincipal())) {
-                String userId = (String) auth.getPrincipal();
-                dto.setSellerId(userId);
-                userRepository.findById(userId).ifPresent(u -> {
-                    if (dto.getSellerName() == null) dto.setSellerName(u.getName());
-                    if (dto.getSellerPhone() == null) dto.setSellerPhone(u.getPhone());
-                });
-            } else {
-                dto.setSellerId("u_antonio");
-                dto.setSellerName("António Manuel");
-                dto.setSellerPhone("+244 923 111 222");
-            }
+        // Extrai obrigatoriamente o vendedor do token JWT autenticado (ignora sellerId enviado pelo cliente)
+        String currentUserId = SecurityUtils.requireCurrentUserId();
+        dto.setSellerId(currentUserId);
+
+        User seller = userRepository.findById(currentUserId).orElse(null);
+        if (seller != null) {
+            dto.setSellerName(seller.getName());
+            dto.setSellerPhone(seller.getPhone());
         }
 
         Listing created = listingService.createListing(dto);

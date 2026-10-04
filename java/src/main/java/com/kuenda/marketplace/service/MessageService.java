@@ -27,6 +27,9 @@ public class MessageService {
         return messageRepository.findByChatIdOrderByCreatedAtAsc(chatId);
     }
 
+    /**
+     * Único fluxo autoritativo de persistência e difusão em tempo real das mensagens.
+     */
     @Transactional
     public Message saveAndBroadcastMessage(MessageRequestDTO dto) {
         String now = Instant.now().toString();
@@ -45,10 +48,10 @@ public class MessageService {
         // Atualiza a pré-visualização do chat com a última mensagem
         chatService.updateLastMessage(dto.getChatId(), dto.getText(), now);
 
-        // Dispara mensagem em tempo real para o canal do chat
+        // Difunde mensagem em tempo real para o canal do chat e para o canal privado do destinatário
         try {
             messagingTemplate.convertAndSend("/topic/chats/" + dto.getChatId(), saved);
-            // Dispara notificação pessoal para o destinatário
+            messagingTemplate.convertAndSend("/topic/messages/" + dto.getRecipientId(), saved);
             messagingTemplate.convertAndSend("/topic/users/" + dto.getRecipientId() + "/notifications", saved);
         } catch (Exception e) {
             log.warn("Erro ao emitir mensagem via WebSocket: {}", e.getMessage());

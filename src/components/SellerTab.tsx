@@ -20,6 +20,7 @@ interface SellerTabProps {
   onToggleListingStatus: (id: string, currentStatus: string) => void;
   onDeleteListing: (id: string) => void;
   sellerId?: string;
+  authToken?: string | null;
 }
 
 export default function SellerTab({
@@ -29,6 +30,7 @@ export default function SellerTab({
   onToggleListingStatus,
   onDeleteListing,
   sellerId,
+  authToken,
 }: SellerTabProps) {
   const [diagnostic, setDiagnostic] = useState<AiSellerDiagnostic | null>(null);
   const [diagnosing, setDiagnosing] = useState(false);
@@ -43,9 +45,13 @@ export default function SellerTab({
   const handleRunSellerDiagnostics = async () => {
     setDiagnosing(true);
     try {
+      const token = authToken || localStorage.getItem('sc_token');
       const res = await fetch(getApiUrl('/api/ai/seller-diagnostics'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ sellerId }),
       });
       if (res.ok) {

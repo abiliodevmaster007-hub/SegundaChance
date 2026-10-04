@@ -85,9 +85,12 @@ export default function App() {
     resetFilters,
   } = useAppLogic();
 
+  const isAuthenticated = Boolean(currentUser && authToken);
+  const isAdmin = Boolean(currentUser && authToken && currentUser.role === 'ADMIN');
+
   const handleApplyAiDraftToModal = (draft: ListingPrefillData) => {
     setAiListingPrefill(draft);
-    if (!currentUser) {
+    if (!isAuthenticated) {
       setAuthModalMode('login');
       setAuthModalOpen(true);
     } else {
@@ -108,7 +111,7 @@ export default function App() {
         setActiveTab={setActiveTab}
         onOpenCreateListing={() => {
           setAiListingPrefill(null);
-          if (!currentUser) {
+          if (!isAuthenticated) {
             setAuthModalMode('login');
             setAuthModalOpen(true);
           } else {
@@ -132,6 +135,7 @@ export default function App() {
             className="flex flex-1 overflow-hidden"
           >
             <Routes location={location}>
+              {/* Rota Pública (Landing Page): Catálogo de Artigos */}
               <Route
                 path="/"
                 element={
@@ -155,40 +159,50 @@ export default function App() {
                 }
               />
               <Route path="/explore" element={<Navigate to="/" replace />} />
+
+              {/* Rotas Protegidas de Nível USER / ADMIN (Redirecionam visitantes não autenticados para /) */}
               <Route
                 path="/ai"
                 element={
-                  <AiAssistantTab
-                    currentUser={currentUser}
-                    authToken={authToken}
-                    onOpenListingDetail={setSelectedListing}
-                    onContactSeller={handleContactSellerInput}
-                    onApplyDraftToModal={handleApplyAiDraftToModal}
-                  />
+                  isAuthenticated ? (
+                    <AiAssistantTab
+                      currentUser={currentUser}
+                      authToken={authToken}
+                      onOpenListingDetail={setSelectedListing}
+                      onContactSeller={handleContactSellerInput}
+                      onApplyDraftToModal={handleApplyAiDraftToModal}
+                    />
+                  ) : (
+                    <Navigate to="/" replace />
+                  )
                 }
               />
               <Route
                 path="/messages"
                 element={
-                  <MessagesTab
-                    currentUser={currentUser}
-                    chats={chats}
-                    chatsLoading={chatsLoading}
-                    selectedChat={selectedChat}
-                    setSelectedChat={setSelectedChat}
-                    messages={messages}
-                    messagesLoading={messagesLoading}
-                    typedMessage={typedMessage}
-                    setTypedMessage={setTypedMessage}
-                    messageSending={messageSending}
-                    onSendMessage={handleSendMessage}
-                  />
+                  isAuthenticated ? (
+                    <MessagesTab
+                      currentUser={currentUser}
+                      chats={chats}
+                      chatsLoading={chatsLoading}
+                      selectedChat={selectedChat}
+                      setSelectedChat={setSelectedChat}
+                      messages={messages}
+                      messagesLoading={messagesLoading}
+                      typedMessage={typedMessage}
+                      setTypedMessage={setTypedMessage}
+                      messageSending={messageSending}
+                      onSendMessage={handleSendMessage}
+                    />
+                  ) : (
+                    <Navigate to="/" replace />
+                  )
                 }
               />
               <Route
                 path="/seller"
                 element={
-                  currentUser ? (
+                  isAuthenticated && currentUser ? (
                     <SellerTab
                       sellerListings={sellerListings}
                       sellerListingsLoading={sellerListingsLoading}
@@ -199,6 +213,7 @@ export default function App() {
                       onToggleListingStatus={handleToggleListingStatus}
                       onDeleteListing={handleDeleteListing}
                       sellerId={currentUser.id}
+                      authToken={authToken}
                     />
                   ) : (
                     <Navigate to="/" replace />
@@ -208,7 +223,7 @@ export default function App() {
               <Route
                 path="/profile"
                 element={
-                  currentUser ? (
+                  isAuthenticated && currentUser ? (
                     <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto w-full bg-white dark:bg-slate-900 flex flex-col">
                       <UserProfile
                         currentUser={currentUser}
@@ -223,21 +238,28 @@ export default function App() {
                   )
                 }
               />
+
+              {/* Rota Estritamente Restrita a Nível ADMIN (Redireciona USER comum ou visitante para /) */}
               <Route
                 path="/admin"
                 element={
-                  <main className="flex-1 overflow-y-auto w-full bg-slate-50 dark:bg-slate-950 flex flex-col">
-                    <AdminPanel
-                      stats={adminStats}
-                      listings={listings}
-                      banners={ads}
-                      onUpdateListingStatus={handleUpdateListingStatusAdmin}
-                      onDeleteListing={handleDeleteListingAdmin}
-                      onCreateBanner={handleCreateBanner}
-                      onToggleBanner={handleToggleBanner}
-                      onDeleteBanner={handleDeleteBanner}
-                    />
-                  </main>
+                  isAdmin ? (
+                    <main className="flex-1 overflow-y-auto w-full bg-slate-50 dark:bg-slate-950 flex flex-col">
+                      <AdminPanel
+                        currentUser={currentUser}
+                        stats={adminStats}
+                        listings={listings}
+                        banners={ads}
+                        onUpdateListingStatus={handleUpdateListingStatusAdmin}
+                        onDeleteListing={handleDeleteListingAdmin}
+                        onCreateBanner={handleCreateBanner}
+                        onToggleBanner={handleToggleBanner}
+                        onDeleteBanner={handleDeleteBanner}
+                      />
+                    </main>
+                  ) : (
+                    <Navigate to="/" replace />
+                  )
                 }
               />
               <Route
@@ -248,6 +270,7 @@ export default function App() {
                   </main>
                 }
               />
+              <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </motion.div>
         </AnimatePresence>
@@ -256,20 +279,25 @@ export default function App() {
         )}
       </div>
 
-      <FloatingAiAssistant
-        currentUser={currentUser}
-        authToken={authToken}
-        activeTab={activeTab}
-        onNavigateToFullAiTab={() => setActiveTab('ai')}
-        onOpenListingDetail={setSelectedListing}
-        onApplyDraftToModal={handleApplyAiDraftToModal}
-      />
+      {/* Assistente Flutuante Kuenda AI apenas para utilizadores autenticados */}
+      {isAuthenticated && (
+        <FloatingAiAssistant
+          currentUser={currentUser}
+          authToken={authToken}
+          activeTab={activeTab}
+          onNavigateToFullAiTab={() => setActiveTab('ai')}
+          onOpenListingDetail={setSelectedListing}
+          onApplyDraftToModal={handleApplyAiDraftToModal}
+        />
+      )}
 
       <ToastNotifications
         toasts={toasts}
         onToastClick={() => {
-          setActiveTab('messages');
-          setNotificationCount(0);
+          if (isAuthenticated) {
+            setActiveTab('messages');
+            setNotificationCount(0);
+          }
         }}
       />
 
@@ -292,7 +320,7 @@ export default function App() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {createListingModalOpen && (
+        {createListingModalOpen && isAuthenticated && (
           <CreateListingModal
             isOpen={createListingModalOpen}
             onClose={() => {
@@ -323,7 +351,14 @@ export default function App() {
             isOpen={true}
             onClose={() => setSelectedListing(null)}
             onContactSeller={handleContactSellerInput}
-            isCurrentUserSeller={selectedListing.sellerId === currentUser?.id}
+            isCurrentUserSeller={Boolean(currentUser && selectedListing.sellerId === currentUser.id)}
+            isAuthenticated={isAuthenticated}
+            authToken={authToken}
+            onRequireAuth={() => {
+              setSelectedListing(null);
+              setAuthModalMode('login');
+              setAuthModalOpen(true);
+            }}
           />
         )}
       </AnimatePresence>

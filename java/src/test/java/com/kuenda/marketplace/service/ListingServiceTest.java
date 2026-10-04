@@ -5,6 +5,7 @@ import com.kuenda.marketplace.model.Listing;
 import com.kuenda.marketplace.model.ListingCondition;
 import com.kuenda.marketplace.model.ListingStatus;
 import com.kuenda.marketplace.repository.ListingRepository;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -13,6 +14,10 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.util.Arrays;
 import java.util.List;
@@ -53,6 +58,11 @@ class ListingServiceTest {
                 .sellerPhone("+244 923 111 222")
                 .status(ListingStatus.disponivel)
                 .build();
+    }
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
     }
 
     @Test
@@ -98,8 +108,12 @@ class ListingServiceTest {
     }
 
     @Test
-    @DisplayName("Deve alterar o status do anúncio para vendido com sucesso")
-    void shouldUpdateListingStatusToSold() {
+    @DisplayName("Proprietário do anúncio deve conseguir alterar o status para vendido com sucesso")
+    void shouldUpdateListingStatusWhenOwner() {
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("user_100", null, List.of(new SimpleGrantedAuthority("ROLE_USER")))
+        );
+
         when(listingRepository.findById("list_1")).thenReturn(Optional.of(sampleListing));
         when(listingRepository.save(any(Listing.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -107,6 +121,22 @@ class ListingServiceTest {
 
         assertEquals(ListingStatus.vendido, updated.getStatus());
         verify(messagingTemplate, times(1)).convertAndSend(eq("/topic/listings"), any(Listing.class));
+    }
+
+    @Test
+    @DisplayName("Utilizador terceiro não deve conseguir alterar ou eliminar anúncio de outro vendedor (403 AccessDeniedException)")
+    void shouldThrowAccessDeniedWhenNonOwnerAttemptsToModifyOrDeleteListing() {
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("user_intruso", null, List.of(new SimpleGrantedAuthority("ROLE_USER")))
+        );
+
+        when(listingRepository.findById("list_1")).thenReturn(Optional.of(sampleListing));
+
+        assertThrows(AccessDeniedException.class, () -> listingService.updateStatus("list_1", "vendido"));
+        assertThrows(AccessDeniedException.class, () -> listingService.deleteListing("list_1"));
+
+        verify(listingRepository, never()).save(any());
+        verify(listingRepository, never()).deleteById(any());
     }
 
     @Test

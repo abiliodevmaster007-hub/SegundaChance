@@ -1,0 +1,39 @@
+# Perfil de Produção (PROD -> PostgreSQL)
+spring:
+  datasource:
+    url: "${DB_URL}"
+    driver-class-name: org.postgresql.Driver
+    username: "${DB_USERNAME}"
+    password: "${DB_PASSWORD}"
+    hikari:
+      pool-name: KuendaPostgresHikariPool
+      maximum-pool-size: "${DB_POOL_MAX_SIZE:10}"
+      minimum-idle: "${DB_POOL_MIN_IDLE:2}"
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+  h2:
+    console:
+      enabled: false
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      ddl-auto: "${JPA_DDL_AUTO:validate}"
+    show-sql: false
+
+app:
+  seed:
+    # Nunca executa DataLoader de anúncios/chats de demonstração em produção
+    enabled: false
+  admin:
+    bootstrap:
+      # Em produção, provisiona o administrador da plataforma de forma idempotente via variáveis de ambiente
+      enabled: "${ADMIN_BOOTSTRAP_ENABLED:true}"
+      email: "${ADMIN_BOOTSTRAP_EMAIL:}"
+      password: "${ADMIN_BOOTSTRAP_PASSWORD:}"
+      name: "${ADMIN_BOOTSTRAP_NAME:Administrador SegundaChance}"
+      phone: "${ADMIN_BOOTSTRAP_PHONE:+244 923 000 000}"
+      location: "${ADMIN_BOOTSTRAP_LOCATION:Luanda}"
+  jwt:
+    # Em produção, JWT_SECRET é estritamente obrigatório via variável de ambiente (sem fallback)
+    secret: "${JWT_SECRET}"

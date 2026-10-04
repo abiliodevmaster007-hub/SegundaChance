@@ -5,6 +5,7 @@ import com.kuenda.marketplace.dto.ai.*;
 import com.kuenda.marketplace.security.JwtAuthenticationFilter;
 import com.kuenda.marketplace.security.JwtTokenProvider;
 import com.kuenda.marketplace.service.AiMarketplaceAssistantService;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,6 +13,9 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
@@ -41,6 +45,11 @@ class AiAssistantControllerTest {
 
     @MockBean
     private JwtAuthenticationFilter jwtAuthenticationFilter;
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
 
     @Test
     @DisplayName("GET /api/ai/status deve retornar provedor ativo e ferramentas registadas")
@@ -115,5 +124,34 @@ class AiAssistantControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.optimizedDraft.suggestedTitle").value("iPhone 13 Pro 128GB (Como Novo)"))
                 .andExpect(jsonPath("$.priceAnalysis.verdict").value("PRECO_JUSTO"));
+    }
+
+    @Test
+    @DisplayName("GET /api/ai/seller-diagnostics/{sellerId} deve retornar 200 OK para o próprio vendedor e 403 Forbidden para outro utilizador")
+    void shouldEnforceOwnershipOnSellerDiagnostics() throws Exception {
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("u_antonio", null, List.of(new SimpleGrantedAuthority("ROLE_USER")))
+        );
+
+        AiSellerDiagnosticDTO diag = AiSellerDiagnosticDTO.builder()
+                .sellerId("u_antonio")
+                .totalListings(2)
+                .activeListings(1)
+                .soldListings(1)
+                .conversionRatePercent(50.0)
+                .build();
+
+        when(aiAssistantService.executeSellerDiagnosticsTool("u_antonio")).thenReturn(diag);
+        when(aiAssistantService.resolveActiveProvider()).thenReturn("GEMINI");
+        when(aiAssistantService.resolveActiveModel("GEMINI")).thenReturn("gemini-3.8-flash");
+
+        // Próprio vendedor -> 200 OK
+        mockMvc.perform(get("/api/ai/seller-diagnostics/u_antonio"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sellerDiagnostic.sellerId").value("u_antonio"));
+
+        // Outro vendedor -> 403 Forbidden
+        mockMvc.perform(get("/api/ai/seller-diagnostics/u_maria"))
+                .andExpect(status().isForbidden());
     }
 }

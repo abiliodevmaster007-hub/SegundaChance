@@ -18,6 +18,9 @@ interface ListingDetailProps {
   onClose: () => void;
   onContactSeller: (listing: Listing) => void;
   isCurrentUserSeller: boolean;
+  isAuthenticated?: boolean;
+  authToken?: string | null;
+  onRequireAuth?: () => void;
 }
 
 export default function ListingDetail({
@@ -26,6 +29,9 @@ export default function ListingDetail({
   onClose,
   onContactSeller,
   isCurrentUserSeller,
+  isAuthenticated = false,
+  authToken = null,
+  onRequireAuth,
 }: ListingDetailProps) {
   const [aiAnalysis, setAiAnalysis] = useState<AiPriceAnalysis | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
@@ -51,11 +57,19 @@ export default function ListingDetail({
   };
 
   const handleEvaluatePriceWithAi = async () => {
+    if (!isAuthenticated) {
+      if (onRequireAuth) onRequireAuth();
+      return;
+    }
     setAnalyzing(true);
     try {
+      const token = authToken || localStorage.getItem('sc_token');
       const res = await fetch(getApiUrl('/api/ai/price-analysis'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           listingId: listing.id,
           category: listing.category,

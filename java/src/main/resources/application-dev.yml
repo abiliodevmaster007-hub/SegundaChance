@@ -1,0 +1,30 @@
+# Perfil de Desenvolvimento (DEV -> H2 In-Memory)
+spring:
+  datasource:
+    url: jdbc:h2:mem:kuendadb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=PostgreSQL
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+      settings:
+        web-allow-others: false
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+
+app:
+  seed:
+    enabled: true
+  admin:
+    bootstrap:
+      enabled: "${ADMIN_BOOTSTRAP_ENABLED:true}"
+      email: "${ADMIN_BOOTSTRAP_EMAIL:abiliodevmaster007@gmail.com}"
+      password: "${ADMIN_BOOTSTRAP_PASSWORD:admin123}"
+      name: "${ADMIN_BOOTSTRAP_NAME:Abílio Admin}"
+  jwt:
+    secret: "${JWT_SECRET:DevOnlyKuendaMarketplaceSecretKey2026AngolaMin32Bytes!}"

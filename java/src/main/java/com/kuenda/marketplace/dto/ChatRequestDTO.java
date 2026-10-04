@@ -19,12 +19,10 @@ public class ChatRequestDTO {
 
     private String listingImageUrl;
 
-    @NotBlank(message = "O ID do comprador é obrigatório")
     private String buyerId;
 
     private String buyerName;
 
-    @NotBlank(message = "O ID do vendedor é obrigatório")
     private String sellerId;
 
     private String sellerName;

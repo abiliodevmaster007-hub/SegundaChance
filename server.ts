@@ -728,53 +728,103 @@ function executeChatReplySuggestionsTool(chatId?: string, roleContext?: string) 
 }
 
 // ============================================================================
-// ROTAS DE AUTENTICAÇÃO, ANÚNCIOS E CHATS
+// ROTAS DE AUTENTICAÇÃO, ANÚNCIOS E CHATS (COM VALIDAÇÃO DE ROLE E OWNERSHIP)
 // ============================================================================
 const parseUserIdFromToken = (authHeader?: string): string | null => {
   if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
   const token = authHeader.replace('Bearer ', '').trim();
+  if (!token) return null;
   if (token.startsWith('jwt_')) {
     return token.replace('jwt_', '');
   }
-  return 'u_antonio';
+  return null;
 };
 
-app.post('/api/auth/login', (req, res) => {
-  const { email } = req.body;
-  let user = users.find((u) => u.email.toLowerCase() === String(email || '').toLowerCase());
+const getAuthenticatedUser = (req: express.Request): UserRecord | null => {
+  const userId = parseUserIdFromToken(req.headers.authorization);
+  if (!userId) return null;
+  return users.find((u) => u.id === userId) || null;
+};
+
+const requireAuth = (req: express.Request, res: express.Response): UserRecord | null => {
+  const user = getAuthenticatedUser(req);
   if (!user) {
-    user = {
-      id: 'u_' + Math.random().toString(36).substring(2, 8),
-      name: String(email || 'Utilizador').split('@')[0],
-      email: email || 'user@kuenda.ao',
-      phone: '+244 923 000 999',
-      location: 'Luanda',
-      role: String(email || '').includes('admin') || email === 'abiliodevmaster007@gmail.com' ? 'ADMIN' : 'USER',
-      rating: 5.0,
-      totalSales: 3,
-      createdAt: new Date().toISOString(),
-    };
-    users.push(user);
+    res.status(401).json({ error: 'Autenticação necessária. Inicie sessão novamente.' });
+    return null;
   }
+  return user;
+};
+
+const requireAdmin = (req: express.Request, res: express.Response): UserRecord | null => {
+  const user = requireAuth(req, res);
+  if (!user) return null;
+  if (user.role !== 'ADMIN') {
+    res.status(403).json({ error: 'Acesso negado: esta área exige permissões de Administrador (ROLE_ADMIN).' });
+    return null;
+  }
+  return user;
+};
+
+const BOOTSTRAP_ADMIN_EMAILS = new Set([
+  (process.env.ADMIN_BOOTSTRAP_EMAIL || 'abiliodevmaster007@gmail.com').trim().toLowerCase(),
+  'admin@segundachance.ao',
+]);
+
+app.post('/api/auth/login', (req, res) => {
+  const { email, password } = req.body || {};
+  const normEmail = String(email || '').trim().toLowerCase();
+  if (!normEmail || !password) {
+    return res.status(400).json({ error: 'Por favor, indique o e-mail e a palavra-passe.' });
+  }
+
+  let user = users.find((u) => u.email.toLowerCase() === normEmail);
+  if (!user) {
+    if (BOOTSTRAP_ADMIN_EMAILS.has(normEmail)) {
+      user = {
+        id: 'u_admin',
+        name: process.env.ADMIN_BOOTSTRAP_NAME || 'Administrador SegundaChance',
+        email: normEmail,
+        phone: process.env.ADMIN_BOOTSTRAP_PHONE || '+244 923 000 001',
+        location: process.env.ADMIN_BOOTSTRAP_LOCATION || 'Luanda',
+        role: 'ADMIN',
+        rating: 5.0,
+        totalSales: 8,
+        createdAt: new Date().toISOString(),
+      };
+      users.push(user);
+    } else {
+      return res.status(401).json({ error: 'Credenciais inválidas. Verifique o seu e-mail e palavra-passe.' });
+    }
+  }
+
   recordAuditLog('USER_LOGIN', user.email, `Sessão iniciada (${user.role}) em ${user.location}`);
   res.json({ user, token: `jwt_${user.id}` });
 });
 
 app.post('/api/auth/register', (req, res) => {
-  const { name, email, phone, location } = req.body;
+  const { name, email, password, phone, location } = req.body || {};
+  const normEmail = String(email || '').trim().toLowerCase();
+  if (!normEmail || !password || String(password).length < 6) {
+    return res.status(400).json({ error: 'A palavra-passe deve ter pelo menos 6 caracteres.' });
+  }
+  if (users.some((u) => u.email.toLowerCase() === normEmail)) {
+    return res.status(400).json({ error: 'Este endereço de e-mail já se encontra registado.' });
+  }
+
+  // No registo público, role é SEMPRE forçada a USER (impede escalação de privilégio)
   const newUser: UserRecord = {
     id: 'u_' + Math.random().toString(36).substring(2, 8),
     name: name || 'Novo Utilizador',
-    email: email || 'novo@kuenda.ao',
+    email: normEmail,
     phone: phone || '+244 923 000 000',
     location: location || 'Luanda',
-    role: String(email || '').includes('admin') || email === 'abiliodevmaster007@gmail.com' ? 'ADMIN' : 'USER',
+    role: 'USER',
     rating: 5.0,
     totalSales: 0,
     createdAt: new Date().toISOString(),
   };
   users.push(newUser);
-  recordAuditLog('USER_REGISTER', newUser.email, `Nova conta registada na província ${newUser.location}`);
+  recordAuditLog('USER_REGISTER', newUser.email, `Nova conta USER registada na província ${newUser.location}`);
   res.status(201).json({ user: newUser, token: `jwt_${newUser.id}` });
 });
 
@@ -808,8 +858,8 @@ app.get('/api/listings', (req, res) => {
 });
 
 app.post('/api/listings', (req, res) => {
-  const userId = parseUserIdFromToken(req.headers.authorization) || req.body.sellerId || 'u_antonio';
-  const seller = users.find((u) => u.id === userId) || users[1];
+  const seller = requireAuth(req, res);
+  if (!seller) return;
 
   const created: ListingRecord = {
     id: 'list_' + Math.random().toString(36).substring(2, 9),
@@ -833,37 +883,58 @@ app.post('/api/listings', (req, res) => {
 });
 
 app.patch('/api/listings/:id/status', (req, res) => {
+  const actor = requireAuth(req, res);
+  if (!actor) return;
+
   const { id } = req.params;
   const { status } = req.body;
   const idx = listings.findIndex((l) => l.id === id);
   if (idx === -1) return res.status(404).json({ error: 'Anúncio não encontrado' });
+
+  if (actor.role !== 'ADMIN' && listings[idx].sellerId !== actor.id) {
+    return res.status(403).json({ error: 'Acesso negado: apenas o vendedor proprietário ou administrador pode alterar este anúncio.' });
+  }
+
   listings[idx] = { ...listings[idx], status: status === 'vendido' ? 'vendido' : 'disponivel' };
-  recordAuditLog('LISTING_STATUS', 'Moderador / Vendedor', `Anúncio '${listings[idx].title}' alterado para ${listings[idx].status}`);
+  recordAuditLog('LISTING_STATUS', actor.name, `Anúncio '${listings[idx].title}' alterado para ${listings[idx].status}`);
   res.json(listings[idx]);
 });
 
 app.delete('/api/listings/:id', (req, res) => {
+  const actor = requireAuth(req, res);
+  if (!actor) return;
+
   const { id } = req.params;
   const target = listings.find((l) => l.id === id);
-  listings = listings.filter((l) => l.id !== id);
-  if (target) {
-    recordAuditLog('LISTING_DELETE', 'Moderador / Vendedor', `Anúncio '${target.title}' removido da base de dados`);
+  if (!target) return res.status(404).json({ error: 'Anúncio não encontrado' });
+
+  if (actor.role !== 'ADMIN' && target.sellerId !== actor.id) {
+    return res.status(403).json({ error: 'Acesso negado: apenas o vendedor proprietário ou administrador pode eliminar este anúncio.' });
   }
+
+  listings = listings.filter((l) => l.id !== id);
+  recordAuditLog('LISTING_DELETE', actor.name, `Anúncio '${target.title}' removido da base de dados`);
   res.status(204).send();
 });
 
 app.get('/api/chats', (req, res) => {
-  const userId = parseUserIdFromToken(req.headers.authorization);
-  if (!userId) return res.json(chats);
-  const userChats = chats.filter((c) => c.buyerId === userId || c.sellerId === userId);
-  res.json(userChats.length > 0 ? userChats : chats);
+  const actor = requireAuth(req, res);
+  if (!actor) return;
+  const userChats = chats.filter((c) => c.buyerId === actor.id || c.sellerId === actor.id);
+  res.json(userChats);
 });
 
 app.post('/api/chats/start', (req, res) => {
-  const userId = parseUserIdFromToken(req.headers.authorization) || 'u_maria';
-  const buyer = users.find((u) => u.id === userId) || users[2];
+  const buyer = requireAuth(req, res);
+  if (!buyer) return;
+
   const { listingId } = req.body;
-  const listing = listings.find((l) => l.id === listingId) || listings[0];
+  const listing = listings.find((l) => l.id === listingId);
+  if (!listing) return res.status(404).json({ error: 'Anúncio não encontrado.' });
+
+  if (listing.sellerId === buyer.id) {
+    return res.status(400).json({ error: 'Não pode iniciar uma conversa no seu próprio anúncio.' });
+  }
 
   let existing = chats.find((c) => c.listingId === listing.id && c.buyerId === buyer.id);
   if (!existing) {
@@ -887,40 +958,63 @@ app.post('/api/chats/start', (req, res) => {
 });
 
 app.get('/api/chats/:chatId/messages', (req, res) => {
+  const actor = requireAuth(req, res);
+  if (!actor) return;
+
   const { chatId } = req.params;
+  const chat = chats.find((c) => c.id === chatId);
+  if (!chat) return res.status(404).json({ error: 'Conversa não encontrada.' });
+
+  if (actor.role !== 'ADMIN' && chat.buyerId !== actor.id && chat.sellerId !== actor.id) {
+    return res.status(403).json({ error: 'Acesso negado: não é participante desta conversa.' });
+  }
+
   res.json(messages.filter((m) => m.chatId === chatId));
 });
 
 app.post('/api/chats/:chatId/messages', (req, res) => {
+  const actor = requireAuth(req, res);
+  if (!actor) return;
+
   const { chatId } = req.params;
-  const userId = parseUserIdFromToken(req.headers.authorization) || 'u_maria';
   const chat = chats.find((c) => c.id === chatId);
-  const recipientId = chat ? (chat.sellerId === userId ? chat.buyerId : chat.sellerId) : 'u_antonio';
+  if (!chat) return res.status(404).json({ error: 'Conversa não encontrada.' });
+
+  if (actor.role !== 'ADMIN' && chat.buyerId !== actor.id && chat.sellerId !== actor.id) {
+    return res.status(403).json({ error: 'Acesso negado: não é participante desta conversa.' });
+  }
+
+  const recipientId = chat.sellerId === actor.id ? chat.buyerId : chat.sellerId;
 
   const newMsg: MessageRecord = {
     id: 'msg_' + Math.random().toString(36).substring(2, 9),
     chatId,
-    senderId: userId,
+    senderId: actor.id,
     recipientId,
-    text: req.body.text || '',
+    text: String(req.body.text || '').trim(),
     createdAt: new Date().toISOString(),
   };
   messages.push(newMsg);
-  if (chat) {
-    chat.lastMessageText = newMsg.text;
-    chat.lastMessageTime = newMsg.createdAt;
-  }
+  chat.lastMessageText = newMsg.text;
+  chat.lastMessageTime = newMsg.createdAt;
   res.status(201).json(newMsg);
 });
 
 app.get('/api/auth/me', (req, res) => {
-  const userId = parseUserIdFromToken(req.headers.authorization);
-  const user = users.find((u) => u.id === userId) || users[0];
-  res.json(user);
+  const actor = requireAuth(req, res);
+  if (!actor) return;
+  res.json(actor);
 });
 
 app.put('/api/users/:id', (req, res) => {
+  const actor = requireAuth(req, res);
+  if (!actor) return;
+
   const { id } = req.params;
+  if (actor.role !== 'ADMIN' && actor.id !== id) {
+    return res.status(403).json({ error: 'Acesso negado: só pode editar o seu próprio perfil.' });
+  }
+
   const idx = users.findIndex((u) => u.id === id);
   if (idx === -1) return res.status(404).json({ error: 'Utilizador não encontrado' });
 
@@ -952,6 +1046,10 @@ app.get('/api/banners', (_req, res) => {
 });
 
 app.post('/api/banners', (req, res) => {
+  const actor = requireAuth(req, res);
+  if (!actor) return;
+
+  const isAdmin = actor.role === 'ADMIN';
   const created: BannerRecord = {
     id: 'ad-' + Math.random().toString(36).substring(2, 9),
     title: req.body.title || 'Campanha Publicitária',
@@ -960,37 +1058,43 @@ app.post('/api/banners', (req, res) => {
       'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=500&auto=format&fit=crop&q=60',
     targetUrl: req.body.targetUrl || 'https://segundachance.ao',
     position: req.body.position === 'topo' ? 'topo' : 'lateral',
-    active: Boolean(req.body.active),
+    active: isAdmin ? Boolean(req.body.active) : false,
     createdAt: new Date().toISOString(),
   };
   banners = [created, ...banners];
   recordAuditLog(
     'BANNER_CREATE',
-    'Publicidade',
+    actor.email,
     `Novo banner '${created.title}' (${created.active ? 'Ativo' : 'Pendente'})`
   );
   res.status(201).json(created);
 });
 
 app.patch('/api/banners/:id/toggle', (req, res) => {
+  const admin = requireAdmin(req, res);
+  if (!admin) return;
+
   const { id } = req.params;
   const idx = banners.findIndex((b) => b.id === id);
   if (idx === -1) return res.status(404).json({ error: 'Banner não encontrado' });
   banners[idx] = { ...banners[idx], active: !banners[idx].active };
   recordAuditLog(
     'BANNER_TOGGLE',
-    'Gestor da Plataforma',
+    admin.email,
     `Banner '${banners[idx].title}' ${banners[idx].active ? 'ativado' : 'desativado'}`
   );
   res.json(banners[idx]);
 });
 
 app.delete('/api/banners/:id', (req, res) => {
+  const admin = requireAdmin(req, res);
+  if (!admin) return;
+
   const { id } = req.params;
   const target = banners.find((b) => b.id === id);
   banners = banners.filter((b) => b.id !== id);
   if (target) {
-    recordAuditLog('BANNER_DELETE', 'Gestor da Plataforma', `Banner '${target.title}' removido`);
+    recordAuditLog('BANNER_DELETE', admin.email, `Banner '${target.title}' removido`);
   }
   res.status(204).send();
 });
@@ -998,7 +1102,8 @@ app.delete('/api/banners/:id', (req, res) => {
 // ============================================================================
 // ROTAS DE GESTÃO PROFUNDA DA PLATAFORMA & TELEMETRIA DO SERVIDOR (/api/admin/*)
 // ============================================================================
-app.get('/api/admin/stats', (_req, res) => {
+app.get('/api/admin/stats', (req, res) => {
+  if (!requireAdmin(req, res)) return;
   res.json({
     totalUsers: users.length,
     activeListings: listings.filter((l) => l.status === 'disponivel').length,
@@ -1007,7 +1112,8 @@ app.get('/api/admin/stats', (_req, res) => {
   });
 });
 
-app.get('/api/admin/overview', (_req, res) => {
+app.get('/api/admin/overview', (req, res) => {
+  if (!requireAdmin(req, res)) return;
   const activeItems = listings.filter((l) => l.status === 'disponivel');
   const soldItems = listings.filter((l) => l.status === 'vendido');
 
@@ -1065,35 +1171,46 @@ app.get('/api/admin/overview', (_req, res) => {
   });
 });
 
-app.get('/api/admin/users', (_req, res) => {
+app.get('/api/admin/users', (req, res) => {
+  if (!requireAdmin(req, res)) return;
   res.json(users);
 });
 
 app.patch('/api/admin/users/:id/role', (req, res) => {
+  const admin = requireAdmin(req, res);
+  if (!admin) return;
   const { id } = req.params;
   const { role } = req.body || {};
   const user = users.find((u) => u.id === id);
   if (!user) return res.status(404).json({ error: 'Utilizador não encontrado' });
   user.role = role === 'ADMIN' ? 'ADMIN' : 'USER';
-  recordAuditLog('USER_ROLE_CHANGE', 'Gestor da Plataforma', `Permissão de ${user.name} (${user.email}) alterada para ${user.role}`);
+  recordAuditLog('USER_ROLE_CHANGE', admin.email, `Permissão de ${user.name} (${user.email}) alterada para ${user.role}`);
   res.json(user);
 });
 
 app.delete('/api/admin/users/:id', (req, res) => {
+  const admin = requireAdmin(req, res);
+  if (!admin) return;
   const { id } = req.params;
+  if (admin.id === id) {
+    return res.status(400).json({ error: 'Não é permitido eliminar a própria conta de administrador ativa.' });
+  }
   const target = users.find((u) => u.id === id);
   users = users.filter((u) => u.id !== id);
   if (target) {
-    recordAuditLog('USER_DELETE', 'Gestor da Plataforma', `Conta de ${target.email} eliminada`);
+    recordAuditLog('USER_DELETE', admin.email, `Conta de ${target.email} eliminada`);
   }
   res.status(204).send();
 });
 
-app.get('/api/admin/chats', (_req, res) => {
+app.get('/api/admin/chats', (req, res) => {
+  if (!requireAdmin(req, res)) return;
   res.json(chats);
 });
 
 app.post('/api/admin/ai-config', (req, res) => {
+  const admin = requireAdmin(req, res);
+  if (!admin) return;
   const { provider, model } = req.body || {};
   if (provider) runtimeProviderOverride = String(provider).toUpperCase();
   if (model) {
@@ -1107,7 +1224,7 @@ app.post('/api/admin/ai-config', (req, res) => {
   const activeModel = getActiveModel(activeProvider);
   recordAuditLog(
     'AI_ENGINE_CONFIG',
-    'Gestor da Plataforma',
+    admin.email,
     `Configuração Spring AI alterada para ${runtimeProviderOverride} (${activeModel})`
   );
   res.json({

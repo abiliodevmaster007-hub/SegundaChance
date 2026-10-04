@@ -31,6 +31,7 @@ import {
 import AdminBannersManager from './AdminBannersManager';
 
 interface AdminPanelProps {
+  currentUser?: User | null;
   stats: AdminDashboardStats;
   listings: Listing[];
   banners: AdBanner[];
@@ -44,6 +45,7 @@ interface AdminPanelProps {
 type ManagerTab = 'overview' | 'server_api' | 'listings' | 'users' | 'banners';
 
 export default function AdminPanel({
+  currentUser,
   stats,
   listings,
   banners,
@@ -65,6 +67,23 @@ export default function AdminPanel({
   const [selectedAiProvider, setSelectedAiProvider] = useState('HYBRID');
   const [updatingAi, setUpdatingAi] = useState(false);
 
+  // Defesa em profundidade: bloqueia renderização se o utilizador não tiver ROLE_ADMIN
+  if (!currentUser || currentUser.role !== 'ADMIN') {
+    return (
+      <div className="flex flex-1 items-center justify-center p-8 text-center">
+        <div className="max-w-md rounded-2xl border border-red-200 dark:border-red-900 bg-white dark:bg-slate-900 p-8 shadow-sm">
+          <ShieldCheck className="mx-auto h-10 w-10 text-red-600 mb-3" />
+          <h2 className="font-display text-lg font-bold text-slate-900 dark:text-white">
+            Acesso Restrito ao Gestor Central
+          </h2>
+          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+            Esta área é exclusiva para administradores da plataforma (ROLE_ADMIN).
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const formatKz = (val: number) => `${Math.round(val || 0).toLocaleString('pt-PT')} Kz`;
 
   const formatUptime = (seconds: number) => {
@@ -74,13 +93,28 @@ export default function AdminPanel({
     return `${hrs}h ${mins}m ${secs}s`;
   };
 
+  const getAuthHeaders = (includeJson = false): Record<string, string> => {
+    const headers: Record<string, string> = {};
+    if (includeJson) {
+      headers['Content-Type'] = 'application/json';
+    }
+    try {
+      const token = localStorage.getItem('sc_token');
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+    } catch {}
+    return headers;
+  };
+
   const fetchPlatformData = useCallback(async () => {
     setLoading(true);
     try {
+      const headers = getAuthHeaders();
       const [ovRes, usrRes, chatRes] = await Promise.all([
-        fetch(getApiUrl('/api/admin/overview')),
-        fetch(getApiUrl('/api/admin/users')),
-        fetch(getApiUrl('/api/admin/chats')),
+        fetch(getApiUrl('/api/admin/overview'), { headers }),
+        fetch(getApiUrl('/api/admin/users'), { headers }),
+        fetch(getApiUrl('/api/admin/chats'), { headers }),
       ]);
 
       if (ovRes.ok) {
@@ -109,7 +143,7 @@ export default function AdminPanel({
     try {
       const res = await fetch(getApiUrl(`/api/admin/users/${user.id}/role`), {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(true),
         body: JSON.stringify({ role: nextRole }),
       });
       if (res.ok) {
@@ -124,6 +158,7 @@ export default function AdminPanel({
     try {
       const res = await fetch(getApiUrl(`/api/admin/users/${userId}`), {
         method: 'DELETE',
+        headers: getAuthHeaders(),
       });
       if (res.ok) {
         setUsersList((prev) => prev.filter((u) => u.id !== userId));
@@ -138,7 +173,7 @@ export default function AdminPanel({
     try {
       const res = await fetch(getApiUrl('/api/admin/ai-config'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(true),
         body: JSON.stringify({ provider: providerMode }),
       });
       if (res.ok) {
@@ -156,15 +191,15 @@ export default function AdminPanel({
     const t0 = performance.now();
     try {
       if (method === 'GET') {
-        await fetch(getApiUrl(path));
+        await fetch(getApiUrl(path), { headers: getAuthHeaders() });
       } else if (path.includes('price-analysis')) {
         await fetch(getApiUrl(path), {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders(true),
           body: JSON.stringify({ category: 'tecnologia', location: 'Luanda', currentPriceKz: 450000 }),
         });
       } else {
-        await fetch(getApiUrl('/api/ai/status'));
+        await fetch(getApiUrl('/api/ai/status'), { headers: getAuthHeaders() });
       }
       const elapsed = Math.round((performance.now() - t0) * 10) / 10;
       setProbeStatus((prev) => ({ ...prev, [key]: `200 OK (${elapsed} ms)` }));

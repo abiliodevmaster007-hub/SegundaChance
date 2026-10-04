@@ -51,9 +51,13 @@ export default function MessagesTab({
     const isSeller = selectedChat.sellerId === currentUser?.id;
 
     try {
+      const token = localStorage.getItem('sc_token');
       const res = await fetch(getApiUrl('/api/ai/chat-suggestions'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           chatId: selectedChat.id,
           roleContext: isSeller ? 'SELLER' : 'BUYER',

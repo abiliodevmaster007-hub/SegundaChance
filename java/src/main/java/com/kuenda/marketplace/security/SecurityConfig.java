@@ -35,6 +35,7 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
+                .cors(org.springframework.security.config.Customizer.withDefaults())
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .headers(headers -> headers.frameOptions(HeadersConfigurer.FrameOptionsConfig::sameOrigin))
@@ -60,10 +61,17 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/register").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/auth/me").authenticated()
 
-                        // Leitura pública do catálogo, banners e perfil público de utilizadores
+                        // Leitura pública do catálogo, banners e perfil público individual
                         .requestMatchers(HttpMethod.GET, "/api/listings", "/api/listings/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/banners", "/api/banners/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/users/*").permitAll()
+
+                        // Submissão de campanha de banner exige utilizador autenticado; ativação/edição/remoção e listagem global de utilizadores exigem ADMIN
+                        .requestMatchers(HttpMethod.GET, "/api/users").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/banners").authenticated()
+                        .requestMatchers(HttpMethod.PUT, "/api/banners/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PATCH, "/api/banners/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/banners/**").hasRole("ADMIN")
 
                         // Handshake WebSocket
                         .requestMatchers("/ws/**").permitAll()
@@ -71,10 +79,11 @@ public class SecurityConfig {
                         // Rotas administrativas exigem estritamente ROLE_ADMIN
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
 
-                        // Rotas do assistente Kuenda AI exigem utilizador autenticado
+                        // Estado de saúde do motor Kuenda AI público; ferramentas e chat de IA exigem utilizador autenticado
+                        .requestMatchers(HttpMethod.GET, "/api/ai/status").permitAll()
                         .requestMatchers("/api/ai/**").authenticated()
 
-                        // Qualquer outra rota (POST/PATCH/DELETE de anúncios, chats, mensagens, edição de perfil) exige autenticação
+                        // Qualquer outra rota (POST/PUT/PATCH/DELETE de anúncios, chats, mensagens, edição de perfil) exige autenticação
                         .anyRequest().authenticated()
                 );
 

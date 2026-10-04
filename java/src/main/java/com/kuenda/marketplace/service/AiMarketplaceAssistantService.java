@@ -312,12 +312,17 @@ public class AiMarketplaceAssistantService {
     // =========================================================================
     @Transactional(readOnly = true)
     public AiSellerDiagnosticDTO executeSellerDiagnosticsTool(String sellerId) {
-        List<Listing> sellerListings;
-        if (sellerId != null && !sellerId.isBlank()) {
-            sellerListings = listingRepository.findBySellerIdOrderByCreatedAtDesc(sellerId);
-        } else {
-            sellerListings = listingRepository.findAllByOrderByCreatedAtDesc();
+        String targetSellerId = (sellerId != null && !sellerId.isBlank())
+                ? sellerId.trim()
+                : com.kuenda.marketplace.security.SecurityUtils.getCurrentUserIdOpt().orElse(null);
+
+        if (targetSellerId != null && com.kuenda.marketplace.security.SecurityUtils.getCurrentUserIdOpt().isPresent()) {
+            com.kuenda.marketplace.security.SecurityUtils.requireOwnerOrAdmin(targetSellerId, "o diagnóstico deste vendedor");
         }
+
+        List<Listing> sellerListings = (targetSellerId != null && !targetSellerId.isBlank())
+                ? listingRepository.findBySellerIdOrderByCreatedAtDesc(targetSellerId)
+                : Collections.emptyList();
 
         int total = sellerListings.size();
         int sold = (int) sellerListings.stream().filter(l -> l.getStatus() == ListingStatus.vendido).count();
@@ -380,7 +385,7 @@ public class AiMarketplaceAssistantService {
                 : (total > 0 ? "BOM" : "PRECISA_ATENCAO");
 
         return AiSellerDiagnosticDTO.builder()
-                .sellerId(sellerId != null ? sellerId : "vendedor_atual")
+                .sellerId(targetSellerId != null ? targetSellerId : "vendedor_atual")
                 .totalListings(total)
                 .activeListings(active)
                 .soldListings(sold)
@@ -401,9 +406,26 @@ public class AiMarketplaceAssistantService {
         boolean isSeller = "SELLER".equalsIgnoreCase(roleContext);
 
         if (chatId != null && !chatId.isBlank()) {
-            Optional<Chat> chatOpt = chatRepository.findById(chatId);
+            Optional<Chat> chatOpt = chatRepository.findById(chatId.trim());
             if (chatOpt.isPresent()) {
                 Chat chat = chatOpt.get();
+
+                // Impede que terceiros acedam às sugestões de negociação de um chat alheio (HTTP 403)
+                Optional<String> currentUserOpt = com.kuenda.marketplace.security.SecurityUtils.getCurrentUserIdOpt();
+                if (currentUserOpt.isPresent()) {
+                    com.kuenda.marketplace.security.SecurityUtils.requireParticipantOrAdmin(
+                            chat.getBuyerId(),
+                            chat.getSellerId(),
+                            "as sugestões desta conversa"
+                    );
+                    String currentUserId = currentUserOpt.get();
+                    if (currentUserId.equals(chat.getSellerId())) {
+                        isSeller = true;
+                    } else if (currentUserId.equals(chat.getBuyerId())) {
+                        isSeller = false;
+                    }
+                }
+
                 String title = chat.getListingTitle() != null ? chat.getListingTitle() : "o artigo";
                 double price = chat.getListingPrice() != null ? chat.getListingPrice() : 0.0;
                 double counterOffer = Math.round((price * 0.90) / 500.0) * 500.0;

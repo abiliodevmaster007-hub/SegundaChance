@@ -39,6 +39,8 @@ export default function Header({
   darkMode,
   onToggleDarkMode,
 }: HeaderProps) {
+  const isAdmin = Boolean(currentUser && currentUser.role === 'ADMIN');
+
   const handleBellClick = () => {
     setActiveTab('messages');
     if (onResetNotifications) {
@@ -58,7 +60,7 @@ export default function Header({
           SegundaChance
         </button>
 
-        {/* Zone 2: Navigation Links */}
+        {/* Zone 2: Navigation Links (Isolamento estrito por nível de permissão) */}
         <nav className="hidden md:flex items-center space-x-6">
           <button
             type="button"
@@ -72,21 +74,22 @@ export default function Header({
             Explorar
           </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab('ai')}
-            className={`py-1 text-sm font-medium transition border-b-2 inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
-              activeTab === 'ai'
-                ? 'border-indigo-600 text-indigo-700 dark:text-indigo-400 font-semibold'
-                : 'border-transparent text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            <Bot className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-            <span>Kuenda AI</span>
-          </button>
-
+          {/* Painéis de Utilizador Autenticado (USER / ADMIN) — ocultos para visitantes na Landing Page */}
           {currentUser && (
             <>
+              <button
+                type="button"
+                onClick={() => setActiveTab('ai')}
+                className={`py-1 text-sm font-medium transition border-b-2 inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                  activeTab === 'ai'
+                    ? 'border-indigo-600 text-indigo-700 dark:text-indigo-400 font-semibold'
+                    : 'border-transparent text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <Bot className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                <span>Kuenda AI</span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => setActiveTab('messages')}
@@ -115,18 +118,21 @@ export default function Header({
             </>
           )}
 
-          <button
-            type="button"
-            onClick={() => setActiveTab('admin')}
-            className={`py-1 text-sm font-medium transition border-b-2 inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
-              activeTab === 'admin'
-                ? 'border-indigo-600 text-indigo-700 dark:text-indigo-400 font-semibold'
-                : 'border-transparent text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            <Server className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-            <span>Gestor Central</span>
-          </button>
+          {/* Painel de Nível Superior (Gestor Central) — estritamente visível apenas para ROLE_ADMIN */}
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('admin')}
+              className={`py-1 text-sm font-medium transition border-b-2 inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                activeTab === 'admin'
+                  ? 'border-indigo-600 text-indigo-700 dark:text-indigo-400 font-semibold'
+                  : 'border-transparent text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <Server className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+              <span>Gestor Central</span>
+            </button>
+          )}
         </nav>
 
         {/* Zone 3: Primary Actions + Theme Toggle */}
@@ -220,75 +226,75 @@ export default function Header({
         </div>
       </div>
 
-      {/* Mobile Navigation Tab Bar */}
-      <div className="flex md:hidden border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900">
-        <button
-          type="button"
-          onClick={() => setActiveTab('explore')}
-          className={`flex-1 py-2.5 text-center text-xs font-semibold border-b-2 transition whitespace-nowrap ${
-            activeTab === 'explore'
-              ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
-              : 'border-transparent text-slate-500 dark:text-slate-400'
-          }`}
-        >
-          Explorar
-        </button>
+      {/* Mobile Navigation Tab Bar — apenas renderizada para utilizadores autenticados */}
+      {currentUser && (
+        <div className="flex md:hidden border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900">
+          <button
+            type="button"
+            onClick={() => setActiveTab('explore')}
+            className={`flex-1 py-2.5 text-center text-xs font-semibold border-b-2 transition whitespace-nowrap ${
+              activeTab === 'explore'
+                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                : 'border-transparent text-slate-500 dark:text-slate-400'
+            }`}
+          >
+            Explorar
+          </button>
 
-        <button
-          type="button"
-          onClick={() => setActiveTab('ai')}
-          className={`flex-1 py-2.5 text-center text-xs font-semibold border-b-2 transition whitespace-nowrap ${
-            activeTab === 'ai'
-              ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
-              : 'border-transparent text-slate-500 dark:text-slate-400'
-          }`}
-        >
-          Kuenda AI
-        </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('ai')}
+            className={`flex-1 py-2.5 text-center text-xs font-semibold border-b-2 transition whitespace-nowrap ${
+              activeTab === 'ai'
+                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                : 'border-transparent text-slate-500 dark:text-slate-400'
+            }`}
+          >
+            Kuenda AI
+          </button>
 
-        {currentUser && (
-          <>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('messages');
+              if (onResetNotifications) onResetNotifications();
+            }}
+            className={`flex-1 py-2.5 text-center text-xs font-semibold border-b-2 transition whitespace-nowrap ${
+              activeTab === 'messages'
+                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                : 'border-transparent text-slate-500 dark:text-slate-400'
+            }`}
+          >
+            Mensagens
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('seller')}
+            className={`flex-1 py-2.5 text-center text-xs font-semibold border-b-2 transition whitespace-nowrap ${
+              activeTab === 'seller'
+                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                : 'border-transparent text-slate-500 dark:text-slate-400'
+            }`}
+          >
+            Vendedor
+          </button>
+
+          {isAdmin && (
             <button
               type="button"
-              onClick={() => {
-                setActiveTab('messages');
-                if (onResetNotifications) onResetNotifications();
-              }}
+              onClick={() => setActiveTab('admin')}
               className={`flex-1 py-2.5 text-center text-xs font-semibold border-b-2 transition whitespace-nowrap ${
-                activeTab === 'messages'
+                activeTab === 'admin'
                   ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
                   : 'border-transparent text-slate-500 dark:text-slate-400'
               }`}
             >
-              Mensagens
+              Gestor
             </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('seller')}
-              className={`flex-1 py-2.5 text-center text-xs font-semibold border-b-2 transition whitespace-nowrap ${
-                activeTab === 'seller'
-                  ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
-                  : 'border-transparent text-slate-500 dark:text-slate-400'
-              }`}
-            >
-              Vendedor
-            </button>
-          </>
-        )}
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('admin')}
-          className={`flex-1 py-2.5 text-center text-xs font-semibold border-b-2 transition whitespace-nowrap ${
-            activeTab === 'admin'
-              ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
-              : 'border-transparent text-slate-500 dark:text-slate-400'
-          }`}
-        >
-          Gestor
-        </button>
-      </div>
+          )}
+        </div>
+      )}
     </header>
   );
 }
