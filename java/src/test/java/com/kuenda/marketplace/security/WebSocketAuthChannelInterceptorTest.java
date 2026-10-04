@@ -55,6 +55,19 @@ class WebSocketAuthChannelInterceptorTest {
     }
 
     @Test
+    @DisplayName("CONNECT STOMP com token JWT inválido ou expirado deve lançar AccessDeniedException")
+    void shouldRejectStompConnectWithInvalidJwt() {
+        StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.CONNECT);
+        accessor.setNativeHeader("Authorization", "Bearer invalid.or.expired.token");
+        accessor.setLeaveMutable(true);
+        Message<byte[]> msg = MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
+
+        when(jwtTokenProvider.validateToken("invalid.or.expired.token")).thenReturn(false);
+
+        assertThrows(AccessDeniedException.class, () -> interceptor.preSend(msg, messageChannel));
+    }
+
+    @Test
     @DisplayName("CONNECT STOMP com token JWT válido deve autenticar o Principal na sessão STOMP")
     void shouldAuthenticateStompConnectWithValidJwt() {
         StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.CONNECT);

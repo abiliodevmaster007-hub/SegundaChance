@@ -3,9 +3,11 @@ package com.kuenda.marketplace.controller;
 import com.kuenda.marketplace.dto.AdminDashboardStatsDTO;
 import com.kuenda.marketplace.dto.PlatformManagementDTO;
 import com.kuenda.marketplace.model.Chat;
+import com.kuenda.marketplace.model.Listing;
 import com.kuenda.marketplace.model.User;
 import com.kuenda.marketplace.security.SecurityUtils;
 import com.kuenda.marketplace.service.AdminService;
+import com.kuenda.marketplace.service.ListingService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -17,11 +19,11 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/admin")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 @PreAuthorize("hasRole('ADMIN')")
 public class AdminController {
 
     private final AdminService adminService;
+    private final ListingService listingService;
 
     @GetMapping("/stats")
     public ResponseEntity<AdminDashboardStatsDTO> getStats() {
@@ -44,6 +46,12 @@ public class AdminController {
         return ResponseEntity.ok(adminService.updateUserRole(id, role));
     }
 
+    @PatchMapping("/users/{id}/ban")
+    public ResponseEntity<User> toggleUserBan(@PathVariable String id, @RequestBody(required = false) Map<String, Boolean> body) {
+        Boolean banned = body != null ? body.get("banned") : null;
+        return ResponseEntity.ok(adminService.toggleUserBan(id, banned));
+    }
+
     @DeleteMapping("/users/{id}")
     public ResponseEntity<Void> deleteUser(@PathVariable String id) {
         SecurityUtils.getCurrentUserIdOpt().ifPresent(currentId -> {
@@ -53,6 +61,18 @@ public class AdminController {
         });
         adminService.deleteUser(id);
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/listings/{id}/promote")
+    public ResponseEntity<Listing> promoteListing(@PathVariable String id, @RequestBody(required = false) Map<String, Object> body) {
+        int days = 7;
+        if (body != null && body.get("days") != null) {
+            try {
+                days = Integer.parseInt(body.get("days").toString());
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return ResponseEntity.ok(listingService.promoteListing(id, days));
     }
 
     @GetMapping("/chats")

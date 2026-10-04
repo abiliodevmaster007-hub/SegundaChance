@@ -113,10 +113,10 @@ class SecurityAndOwnershipIntegrationTest {
                         .createdAt(Instant.now().toString())
                         .build()));
 
-        adminToken = jwtTokenProvider.generateToken(seededAdmin.getId(), seededAdmin.getEmail(), seededAdmin.getName(), "ADMIN");
-        sellerToken = jwtTokenProvider.generateToken(seller.getId(), seller.getEmail(), seller.getName(), "USER");
-        buyerToken = jwtTokenProvider.generateToken(buyer.getId(), buyer.getEmail(), buyer.getName(), "USER");
-        intruderToken = jwtTokenProvider.generateToken(intruder.getId(), intruder.getEmail(), intruder.getName(), "USER");
+        adminToken = jwtTokenProvider.generateToken(seededAdmin.getId(), seededAdmin.getEmail(), "ADMIN");
+        sellerToken = jwtTokenProvider.generateToken(seller.getId(), seller.getEmail(), "USER");
+        buyerToken = jwtTokenProvider.generateToken(buyer.getId(), buyer.getEmail(), "USER");
+        intruderToken = jwtTokenProvider.generateToken(intruder.getId(), intruder.getEmail(), "USER");
     }
 
     @Test

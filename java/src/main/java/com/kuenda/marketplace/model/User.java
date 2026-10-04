@@ -38,9 +38,20 @@ public class User {
     @Column(columnDefinition = "TEXT")
     private String bio;
 
-    private Double rating;
+    @Builder.Default
+    private Double rating = 5.0;
 
-    private Integer totalSales;
+    @Builder.Default
+    private Integer reviewCount = 1;
+
+    @Builder.Default
+    private Integer totalSales = 0;
+
+    @Builder.Default
+    private Boolean isVerified = false;
+
+    @Builder.Default
+    private Boolean banned = false;
 
     @Builder.Default
     @Column(nullable = false)
@@ -49,4 +60,14 @@ public class User {
     @Builder.Default
     @Column(nullable = false, updatable = false)
     private String createdAt = Instant.now().toString();
+
+    public String getAvatar() {
+        return this.avatarUrl;
+    }
+
+    public void setAvatar(String avatar) {
+        if (avatar != null && !avatar.isBlank()) {
+            this.avatarUrl = avatar;
+        }
+    }
 }

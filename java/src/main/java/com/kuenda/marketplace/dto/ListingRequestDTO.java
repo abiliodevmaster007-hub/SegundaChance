@@ -35,9 +35,17 @@ public class ListingRequestDTO {
 
     private String imageUrl;
 
+    private java.util.List<String> images;
+
+    private Boolean featured;
+
     private String sellerId;
 
     private String sellerName;
 
     private String sellerPhone;
+
+    private String sellerAvatar;
+
+    private Double sellerRating;
 }

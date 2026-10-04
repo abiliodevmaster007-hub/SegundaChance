@@ -25,7 +25,6 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 @Slf4j
 public class AuthController {
 
@@ -45,6 +44,11 @@ public class AuthController {
         }
 
         User user = userOpt.get();
+        if (Boolean.TRUE.equals(user.getBanned())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", "Esta conta encontra-se suspensa pela administração."));
+        }
+
         if (!StringUtils.hasText(user.getPassword()) ||
                 !passwordEncoder.matches(authRequest.getPassword(), user.getPassword())) {
             log.warn("Tentativa de login falhada: palavra-passe incorreta para {}", normalizedEmail);
@@ -82,9 +86,10 @@ public class AuthController {
                 .phone(StringUtils.hasText(registerRequest.getPhone()) ? registerRequest.getPhone().trim() : "")
                 .location(StringUtils.hasText(registerRequest.getLocation()) ? registerRequest.getLocation().trim() : "Luanda")
                 .avatarUrl("https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80")
-                .bio("Novo membro no Kuenda Marketplace Angola.")
+                .bio("Membro verificado na comunidade SegundaChance Angola.")
                 .role("USER")
                 .rating(5.0)
+                .reviewCount(1)
                 .totalSales(0)
                 .createdAt(Instant.now().toString())
                 .build();

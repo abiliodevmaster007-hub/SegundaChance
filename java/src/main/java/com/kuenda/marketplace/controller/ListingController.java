@@ -15,11 +15,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/listings")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 public class ListingController {
 
     private final ListingService listingService;
@@ -76,6 +76,8 @@ public class ListingController {
         if (seller != null) {
             dto.setSellerName(seller.getName());
             dto.setSellerPhone(seller.getPhone());
+            dto.setSellerAvatar(seller.getAvatarUrl());
+            dto.setSellerRating(seller.getRating());
         }
 
         Listing created = listingService.createListing(dto);
@@ -87,9 +89,32 @@ public class ListingController {
         return ResponseEntity.ok(listingService.updateListing(id, dto));
     }
 
+    @PatchMapping("/{id}")
+    public ResponseEntity<Listing> patchListing(@PathVariable String id, @RequestBody Map<String, Object> updates) {
+        if (updates.containsKey("status") && updates.get("status") != null && updates.size() == 1) {
+            return ResponseEntity.ok(listingService.updateStatus(id, updates.get("status").toString()));
+        }
+        return ResponseEntity.ok(listingService.patchListing(id, updates));
+    }
+
     @PatchMapping("/{id}/status")
     public ResponseEntity<Listing> updateStatus(@PathVariable String id, @RequestBody StatusUpdateDTO dto) {
         return ResponseEntity.ok(listingService.updateStatus(id, dto.getStatus()));
+    }
+
+    @PostMapping("/{id}/promote")
+    public ResponseEntity<Listing> promoteListing(
+            @PathVariable String id,
+            @RequestBody(required = false) Map<String, Object> body
+    ) {
+        int days = 7;
+        if (body != null && body.get("days") != null) {
+            try {
+                days = Integer.parseInt(body.get("days").toString());
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return ResponseEntity.ok(listingService.promoteListing(id, days));
     }
 
     @DeleteMapping("/{id}")

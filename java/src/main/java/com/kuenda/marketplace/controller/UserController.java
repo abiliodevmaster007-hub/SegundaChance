@@ -14,7 +14,6 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/users")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 public class UserController {
 
     private final UserService userService;
@@ -34,7 +33,12 @@ public class UserController {
 
     @PutMapping("/{id}")
     public ResponseEntity<User> updateUser(@PathVariable String id, @RequestBody UserUpdateDTO dto) {
-        // Apenas o próprio utilizador ou ADMIN pode atualizar o perfil
+        SecurityUtils.requireOwnerOrAdmin(id, "o perfil deste utilizador");
+        return ResponseEntity.ok(userService.updateUserProfile(id, dto));
+    }
+
+    @PatchMapping("/{id}")
+    public ResponseEntity<User> patchUser(@PathVariable String id, @RequestBody UserUpdateDTO dto) {
         SecurityUtils.requireOwnerOrAdmin(id, "o perfil deste utilizador");
         return ResponseEntity.ok(userService.updateUserProfile(id, dto));
     }

@@ -37,3 +37,6 @@ app:
   jwt:
     # Em produção, JWT_SECRET é estritamente obrigatório via variável de ambiente (sem fallback)
     secret: "${JWT_SECRET}"
+  cors:
+    # Em produção, aceita estritamente as origens configuradas
+    allowed-origins: "${CORS_ALLOWED_ORIGINS:https://*.run.app}"

@@ -2,6 +2,7 @@ package com.kuenda.marketplace.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kuenda.marketplace.dto.AuthRequestDTO;
+import com.kuenda.marketplace.dto.RegisterRequestDTO;
 import com.kuenda.marketplace.model.User;
 import com.kuenda.marketplace.repository.UserRepository;
 import com.kuenda.marketplace.security.JwtAuthenticationFilter;
@@ -97,7 +98,7 @@ class AuthControllerSecurityTest {
                 .build();
 
         when(userRepository.findByEmail("antonio@email.ao")).thenReturn(Optional.of(storedUser));
-        when(jwtTokenProvider.generateToken(any(), any(), any(), any())).thenReturn("mock.jwt.token");
+        when(jwtTokenProvider.generateToken(any(), any(), any())).thenReturn("mock.jwt.token");
 
         AuthRequestDTO req = AuthRequestDTO.builder()
                 .email("antonio@email.ao")
@@ -118,9 +119,9 @@ class AuthControllerSecurityTest {
     void shouldForceUserRoleAndHashPasswordOnRegister() throws Exception {
         when(userRepository.findByEmail("admin_falso@email.ao")).thenReturn(Optional.empty());
         when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(jwtTokenProvider.generateToken(any(), any(), any(), any())).thenReturn("new.jwt.token");
+        when(jwtTokenProvider.generateToken(any(), any(), any())).thenReturn("new.jwt.token");
 
-        AuthRequestDTO req = AuthRequestDTO.builder()
+        RegisterRequestDTO req = RegisterRequestDTO.builder()
                 .name("Intruso")
                 .email("admin_falso@email.ao")
                 .password("MinhaSenhaSegura123")

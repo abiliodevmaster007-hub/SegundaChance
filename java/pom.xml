@@ -12,10 +12,10 @@
     </parent>
     
     <groupId>com.kuenda</groupId>
-    <artifactId>marketplace-backend</artifactId>
+    <artifactId>segundachance-marketplace-backend</artifactId>
     <version>1.0.0</version>
-    <name>Kuenda Marketplace Backend</name>
-    <description>API REST &amp; WebSocket STOMP Backend em Spring Boot com JWT Security para a plataforma Kuenda Marketplace Angola</description>
+    <name>SegundaChance Angola Marketplace Backend</name>
+    <description>API REST &amp; WebSocket STOMP Backend Oficial em Spring Boot com JWT Security para a plataforma SegundaChance Angola</description>
     
     <properties>
         <java.version>17</java.version>

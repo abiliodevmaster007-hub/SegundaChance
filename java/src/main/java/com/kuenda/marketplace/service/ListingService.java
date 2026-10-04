@@ -97,6 +97,14 @@ public class ListingService {
         validateListingBusinessRules(dto);
         String resolvedSellerId = SecurityUtils.getCurrentUserIdOpt().orElse(dto.getSellerId());
 
+        java.util.List<String> resolvedImages = new java.util.ArrayList<>();
+        if (dto.getImages() != null && !dto.getImages().isEmpty()) {
+            resolvedImages.addAll(dto.getImages());
+        } else if (StringUtils.hasText(dto.getImageUrl())) {
+            resolvedImages.add(dto.getImageUrl().trim());
+        }
+        String primaryImage = !resolvedImages.isEmpty() ? resolvedImages.get(0) : dto.getImageUrl();
+
         Listing listing = Listing.builder()
                 .id("list_" + UUID.randomUUID().toString().substring(0, 8))
                 .title(dto.getTitle().trim())
@@ -105,10 +113,14 @@ public class ListingService {
                 .category(dto.getCategory().trim().toLowerCase())
                 .condition(dto.getCondition())
                 .location(dto.getLocation().trim())
-                .imageUrl(dto.getImageUrl())
+                .imageUrl(primaryImage)
+                .images(resolvedImages)
+                .featured(Boolean.TRUE.equals(dto.getFeatured()))
                 .sellerId(resolvedSellerId)
-                .sellerName(dto.getSellerName() != null ? dto.getSellerName() : "Vendedor Kuenda")
+                .sellerName(dto.getSellerName() != null ? dto.getSellerName() : "Vendedor SegundaChance")
                 .sellerPhone(dto.getSellerPhone() != null ? dto.getSellerPhone() : "")
+                .sellerAvatar(dto.getSellerAvatar())
+                .sellerRating(dto.getSellerRating() != null ? dto.getSellerRating() : 5.0)
                 .status(ListingStatus.disponivel)
                 .createdAt(Instant.now().toString())
                 .build();
@@ -145,6 +157,10 @@ public class ListingService {
         if (dto.getImageUrl() != null && !dto.getImageUrl().trim().isEmpty()) {
             listing.setImageUrl(dto.getImageUrl().trim());
         }
+        if (dto.getImages() != null && !dto.getImages().isEmpty()) {
+            listing.setImages(new java.util.ArrayList<>(dto.getImages()));
+            listing.setImageUrl(dto.getImages().get(0));
+        }
 
         Listing updated = listingRepository.save(listing);
         try {
@@ -157,10 +173,71 @@ public class ListingService {
     }
 
     @Transactional
+    public Listing patchListing(String id, java.util.Map<String, Object> updates) {
+        Listing listing = listingRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Anúncio não encontrado com o ID: " + id));
+
+        if (SecurityUtils.getCurrentUserIdOpt().isPresent()) {
+            SecurityUtils.requireOwnerOrAdmin(listing.getSellerId(), "este anúncio");
+        }
+
+        if (updates.containsKey("status") && updates.get("status") != null) {
+            return updateStatus(id, updates.get("status").toString());
+        }
+        if (updates.containsKey("title") && updates.get("title") != null) {
+            listing.setTitle(updates.get("title").toString().trim());
+        }
+        if (updates.containsKey("description") && updates.get("description") != null) {
+            listing.setDescription(updates.get("description").toString().trim());
+        }
+        if (updates.containsKey("price") && updates.get("price") != null) {
+            listing.setPrice(Double.parseDouble(updates.get("price").toString()));
+        }
+        if (updates.containsKey("featured") && updates.get("featured") != null) {
+            listing.setFeatured(Boolean.parseBoolean(updates.get("featured").toString()));
+        }
+        if (updates.containsKey("highlightedUntil")) {
+            listing.setHighlightedUntil(updates.get("highlightedUntil") != null ? updates.get("highlightedUntil").toString() : null);
+        }
+
+        Listing updated = listingRepository.save(listing);
+        try {
+            messagingTemplate.convertAndSend("/topic/listings", updated);
+        } catch (Exception e) {
+            log.warn("Erro ao emitir atualização via WebSocket: {}", e.getMessage());
+        }
+        return updated;
+    }
+
+    @Transactional
+    public Listing promoteListing(String id, int days) {
+        Listing listing = listingRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Anúncio não encontrado com o ID: " + id));
+
+        if (SecurityUtils.getCurrentUserIdOpt().isPresent()) {
+            SecurityUtils.requireOwnerOrAdmin(listing.getSellerId(), "promover este anúncio");
+        }
+
+        int safeDays = days > 0 ? days : 7;
+        listing.setFeatured(true);
+        listing.setHighlightedUntil(Instant.now().plus(safeDays, java.time.temporal.ChronoUnit.DAYS).toString());
+
+        Listing updated = listingRepository.save(listing);
+        try {
+            messagingTemplate.convertAndSend("/topic/listings", updated);
+        } catch (Exception e) {
+            log.warn("Erro ao emitir promoção de anúncio via WebSocket: {}", e.getMessage());
+        }
+        return updated;
+    }
+
+    @Transactional
     public Listing updateStatus(String id, String status) {
         if (!StringUtils.hasText(status) ||
-                (!"disponivel".equalsIgnoreCase(status.trim()) && !"vendido".equalsIgnoreCase(status.trim()))) {
-            throw new IllegalArgumentException("Estado de anúncio inválido. Valores permitidos: 'disponivel' ou 'vendido'.");
+                (!"disponivel".equalsIgnoreCase(status.trim())
+                        && !"reservado".equalsIgnoreCase(status.trim())
+                        && !"vendido".equalsIgnoreCase(status.trim()))) {
+            throw new IllegalArgumentException("Estado de anúncio inválido. Valores permitidos: 'disponivel', 'reservado' ou 'vendido'.");
         }
 
         Listing listing = listingRepository.findById(id)
@@ -170,7 +247,12 @@ public class ListingService {
             SecurityUtils.requireOwnerOrAdmin(listing.getSellerId(), "o estado deste anúncio");
         }
 
-        ListingStatus newStatus = "vendido".equalsIgnoreCase(status.trim()) ? ListingStatus.vendido : ListingStatus.disponivel;
+        String normalized = status.trim().toLowerCase();
+        ListingStatus newStatus = switch (normalized) {
+            case "vendido" -> ListingStatus.vendido;
+            case "reservado" -> ListingStatus.reservado;
+            default -> ListingStatus.disponivel;
+        };
         listing.setStatus(newStatus);
         Listing updated = listingRepository.save(listing);
 

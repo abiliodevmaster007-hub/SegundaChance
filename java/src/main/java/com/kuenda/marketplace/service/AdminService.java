@@ -35,21 +35,63 @@ public class AdminService {
     private final SpringAiConfig springAiConfig;
     private final AiMarketplaceAssistantService aiAssistantService;
 
-    private final AtomicLong totalApiCalls = new AtomicLong(148);
+    private final AtomicLong totalApiCalls = new AtomicLong(0);
     private final Deque<PlatformManagementDTO.AuditLogEntry> auditLogs = new ConcurrentLinkedDeque<>();
 
     @Transactional(readOnly = true)
     public AdminDashboardStatsDTO getDashboardStats() {
-        long totalUsers = userRepository.count();
-        long activeListings = listingRepository.countByStatus(ListingStatus.disponivel);
+        List<User> allUsers = userRepository.findAll();
+        List<Listing> allListings = listingRepository.findAll();
+
+        long totalUsers = allUsers.size();
+        long activeUsers = allUsers.stream().filter(u -> !Boolean.TRUE.equals(u.getBanned())).count();
+
+        long totalListings = allListings.size();
+        long availableListings = allListings.stream().filter(l -> l.getStatus() == ListingStatus.disponivel).count();
+        long soldListings = allListings.stream().filter(l -> l.getStatus() == ListingStatus.vendido).count();
+        long negotiatingListings = allListings.stream().filter(l -> l.getStatus() == ListingStatus.reservado).count();
+        long highlightedListings = allListings.stream().filter(l -> Boolean.TRUE.equals(l.getFeatured())).count();
+
+        double totalVolumeKz = allListings.stream()
+                .filter(l -> l.getPrice() != null)
+                .mapToDouble(Listing::getPrice)
+                .sum();
+
+        double soldVolumeKz = allListings.stream()
+                .filter(l -> l.getStatus() == ListingStatus.vendido && l.getPrice() != null)
+                .mapToDouble(Listing::getPrice)
+                .sum();
+
+        Map<String, Long> categoryDistribution = allListings.stream()
+                .filter(l -> l.getCategory() != null)
+                .collect(Collectors.groupingBy(Listing::getCategory, Collectors.counting()));
+
+        Map<String, Long> provinceDistribution = allListings.stream()
+                .filter(l -> l.getLocation() != null)
+                .collect(Collectors.groupingBy(Listing::getLocation, Collectors.counting()));
+
         long activeBanners = bannerRepository.countByActiveTrue();
+        long totalChats = chatRepository.count();
         long messagesCount = messageRepository.count();
 
         return AdminDashboardStatsDTO.builder()
-                .totalUsers(totalUsers > 0 ? totalUsers : 24)
-                .activeListings(activeListings)
+                .totalUsers(totalUsers)
+                .activeUsers(activeUsers)
+                .totalListings(totalListings)
+                .activeListings(availableListings)
+                .availableListings(availableListings)
+                .soldListings(soldListings)
+                .negotiatingListings(negotiatingListings)
+                .highlightedListings(highlightedListings)
                 .activeBanners(activeBanners)
+                .totalChats(totalChats)
+                .totalMessages(messagesCount)
                 .messagesSentToday(messagesCount)
+                .totalVolumeKz(totalVolumeKz)
+                .soldVolumeKz(soldVolumeKz)
+                .estimatedCommissionKz(Math.round(soldVolumeKz * 0.05))
+                .categoryDistribution(categoryDistribution)
+                .provinceDistribution(provinceDistribution)
                 .build();
     }
 
@@ -217,6 +259,20 @@ public class AdminService {
         user.setRole(normalizedRole);
         User saved = userRepository.save(user);
         recordAuditLog("USER_ROLE_UPDATE", "Admin", "Utilizador " + user.getEmail() + " alterado para " + normalizedRole);
+        return saved;
+    }
+
+    @Transactional
+    public User toggleUserBan(String userId, Boolean banned) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("Utilizador não encontrado: " + userId));
+        if ("ADMIN".equalsIgnoreCase(user.getRole())) {
+            throw new IllegalArgumentException("Não é permitido suspender uma conta de Administrador.");
+        }
+        boolean nextBanned = banned != null ? banned : !Boolean.TRUE.equals(user.getBanned());
+        user.setBanned(nextBanned);
+        User saved = userRepository.save(user);
+        recordAuditLog(nextBanned ? "USER_BAN" : "USER_UNBAN", "Admin", "Conta " + user.getEmail() + (nextBanned ? " suspensa" : " reativada"));
         return saved;
     }
 

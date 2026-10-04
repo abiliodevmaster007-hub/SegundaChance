@@ -62,6 +62,18 @@ public final class SecurityUtils {
     }
 
     /**
+     * Exige que o utilizador autenticado possua ROLE_ADMIN (401 se não autenticado, 403 se não for ADMIN).
+     */
+    public static void requireAdmin(String resourceDescription) {
+        requireCurrentUserId();
+        if (!isCurrentUserAdmin()) {
+            throw new AccessDeniedException(
+                    "Acesso negado: apenas administradores da plataforma podem " + resourceDescription + "."
+            );
+        }
+    }
+
+    /**
      * Garante que o utilizador autenticado é o proprietário do recurso (ownerUserId) ou possui ROLE_ADMIN.
      * Caso contrário, lança AccessDeniedException (HTTP 403).
      */
