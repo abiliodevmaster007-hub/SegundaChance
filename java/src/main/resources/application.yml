@@ -27,7 +27,7 @@ spring:
 # Configurações de CORS, Segurança JWT e Configuração Híbrida Multi-Provedor Spring AI
 app:
   jwt:
-    secret: "${JWT_SECRET:KuendaMarketplaceSuperSecretKey2026AngolaVerySecureForJwtSigning!}"
+    secret: "${JWT_SECRET}"
     expiration-ms: 86400000 # 24 horas em milissegundos
   cors:
     allowed-origins:

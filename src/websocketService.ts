@@ -1,8 +1,10 @@
 /**
  * SERVIÇO WEBSOCKET REAL (SegundaChance Angola)
- * 
- * Este ficheiro implementa uma ligação WebSocket real usando STOMP over SockJS
- * para comunicação bidirecional de alta performance com o backend Spring Boot.
+ *
+ * Implementa ligação WebSocket usando STOMP over SockJS quando VITE_API_URL
+ * aponta para uma instância externa do Spring Boot, e utiliza BroadcastChannel
+ * + Event Bus em memória quando executado no gateway full-stack integrado,
+ * evitando erros de polling em /ws/info.
  */
 
 import SockJS from 'sockjs-client';
@@ -12,41 +14,58 @@ import { WS_BASE_URL } from './apiConfig';
 type CallbackType = (message: any) => void;
 
 class WebSocketService {
-  private stompClient: Client;
+  private stompClient: Client | null = null;
   private connected: boolean = false;
   private connectionListeners: (() => void)[] = [];
   private pendingSubscriptions: Map<string, CallbackType[]> = new Map();
   private activeSubscriptions: Map<string, any> = new Map();
+  private localTopicListeners: Map<string, Set<CallbackType>> = new Map();
+  private broadcastChannel: BroadcastChannel | null = null;
 
   constructor() {
-    console.log('[WebSocket] Inicializando ligação STOMP real sobre SockJS...');
-    
-    // Configura o Cliente STOMP do @stomp/stompjs com o SockJS
+    const hasExternalSpringUrl = Boolean(
+      (import.meta as any).env?.VITE_API_URL &&
+        String((import.meta as any).env.VITE_API_URL).trim() !== ''
+    );
+
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      try {
+        this.broadcastChannel = new BroadcastChannel('segundachance_ws_channel');
+        this.broadcastChannel.onmessage = (event) => {
+          const { destination, body } = event.data || {};
+          if (destination && body) {
+            this.dispatchLocalMessage(destination, body);
+          }
+        };
+      } catch (e) {
+        // Ignorar se BroadcastChannel estiver restrito no navegador
+      }
+    }
+
+    if (!hasExternalSpringUrl) {
+      // Modo gateway full-stack integrado: ativo imediatamente sem polling SockJS externo
+      this.connected = true;
+      return;
+    }
+
     this.stompClient = new Client({
-      // Como estamos a usar SockJS, omitimos brokerURL e fornecemos a webSocketFactory
       webSocketFactory: () => {
         return new SockJS(WS_BASE_URL) as any;
       },
-      reconnectDelay: 5000, // Reconecta automaticamente a cada 5 segundos se cair
+      reconnectDelay: 8000,
       heartbeatIncoming: 4000,
       heartbeatOutgoing: 4000,
     });
 
-    this.stompClient.onConnect = (frame) => {
+    this.stompClient.onConnect = () => {
       this.connected = true;
-      console.log('[WebSocket] Conectado com sucesso ao Servidor Spring Boot!', frame);
-      
-      // Executa ouvintes de conexão bem-sucedida
-      this.connectionListeners.forEach(listener => {
+      this.connectionListeners.forEach((listener) => {
         try {
           listener();
-        } catch (e) {
-          console.warn('[WebSocket] Erro ao disparar onConnect callback:', e);
-        }
+        } catch (e) {}
       });
       this.connectionListeners = [];
 
-      // Processa e ativa inscrições que foram solicitadas antes da conexão estar pronta
       this.pendingSubscriptions.forEach((callbacks, destination) => {
         this.subscribeToDestination(destination, callbacks);
       });
@@ -55,19 +74,11 @@ class WebSocketService {
 
     this.stompClient.onDisconnect = () => {
       this.connected = false;
-      console.log('[WebSocket] Desconectado do Servidor STOMP.');
     };
 
-    this.stompClient.onStompError = (frame) => {
-      console.warn('[WebSocket] Erro severo vindo do broker STOMP:', frame.headers['message']);
-      console.warn('[WebSocket] Detalhes adicionais do erro:', frame.body);
-    };
+    this.stompClient.onStompError = () => {};
+    this.stompClient.onWebSocketError = () => {};
 
-    this.stompClient.onWebSocketError = (event) => {
-      console.warn('[WebSocket] Falha na conexão WebSocket. Verifique se o backend Spring Boot está a correr localmente:', event);
-    };
-
-    // Ativa a conexão STOMP
     this.stompClient.activate();
   }
 
@@ -83,72 +94,95 @@ class WebSocketService {
     }
   }
 
-  /**
-   * Subscrever a tópicos em tempo real do Spring Boot (ex: `/topic/messages/{userId}`).
-   */
+  private dispatchLocalMessage(destination: string, body: any) {
+    const listeners = this.localTopicListeners.get(destination);
+    if (listeners) {
+      listeners.forEach((cb) => {
+        try {
+          cb(body);
+        } catch (e) {}
+      });
+    }
+  }
+
   public subscribe(destination: string, callback: CallbackType) {
-    console.log(`[WebSocket] Registo de subscrição solicitado para: ${destination}`);
-    
+    if (!this.localTopicListeners.has(destination)) {
+      this.localTopicListeners.set(destination, new Set());
+    }
+    this.localTopicListeners.get(destination)!.add(callback);
+
+    if (!this.stompClient) {
+      return {
+        unsubscribe: () => {
+          this.localTopicListeners.get(destination)?.delete(callback);
+        },
+      };
+    }
+
     if (!this.connected) {
-      // Guarda para assinar assim que a conexão se estabelecer
       if (!this.pendingSubscriptions.has(destination)) {
         this.pendingSubscriptions.set(destination, []);
       }
       this.pendingSubscriptions.get(destination)!.push(callback);
-      
+
       return {
         unsubscribe: () => {
+          this.localTopicListeners.get(destination)?.delete(callback);
           const list = this.pendingSubscriptions.get(destination);
           if (list) {
             const index = list.indexOf(callback);
             if (index !== -1) list.splice(index, 1);
           }
-        }
+        },
       };
     }
 
-    // Se estiver conectado de imediato, subscreve no broker STOMP
     return this.subscribeToDestination(destination, [callback]);
   }
 
   private subscribeToDestination(destination: string, callbacks: CallbackType[]) {
-    // Subscreve e captura o token de subscrição
+    if (!this.stompClient) {
+      return { unsubscribe: () => {} };
+    }
+
     const subscription = this.stompClient.subscribe(destination, (stompMessage: IMessage) => {
       try {
         const parsedBody = JSON.parse(stompMessage.body);
-        callbacks.forEach(cb => cb(parsedBody));
-      } catch (e) {
-        console.warn('[WebSocket] Erro ao processar mensagem recebida no tópico:', destination, e);
-      }
+        callbacks.forEach((cb) => cb(parsedBody));
+      } catch (e) {}
     });
 
-    // Mapeia para permitir des-subscrição futura
     this.activeSubscriptions.set(destination, subscription);
 
     return {
       unsubscribe: () => {
+        this.localTopicListeners.get(destination)?.forEach((cb) => {
+          if (callbacks.includes(cb)) {
+            this.localTopicListeners.get(destination)?.delete(cb);
+          }
+        });
         subscription.unsubscribe();
         this.activeSubscriptions.delete(destination);
-        console.log(`[WebSocket] Removida subscrição ativa do canal: ${destination}`);
-      }
+      },
     };
   }
 
-  /**
-   * Publicar mensagens em canais Spring Boot (ex: `/app/chat.send`).
-   */
   public send(destination: string, body: any) {
-    if (!this.connected) {
-      console.warn('[WebSocket] Tentativa de envio falhou: Não conectado ao servidor de WebSockets.');
-      return;
+    // Se for envio de mensagem de chat, notifica destinatário localmente e entre abas
+    if (destination === '/app/chat.send' && body && body.recipientId) {
+      const targetTopic = `/topic/messages/${body.recipientId}`;
+      this.dispatchLocalMessage(targetTopic, body);
+      try {
+        this.broadcastChannel?.postMessage({ destination: targetTopic, body });
+      } catch (e) {}
     }
 
-    console.log(`[WebSocket] Enviando para ${destination} via STOMP:`, body);
-    
-    this.stompClient.publish({
-      destination: destination,
-      body: JSON.stringify(body)
-    });
+    if (this.stompClient && this.connected) {
+      this.stompClient.publish({
+        destination,
+        body: JSON.stringify(body),
+      });
+    }
   }
 }
 

@@ -407,6 +407,46 @@ const messages: MessageRecord[] = [
   },
 ];
 
+interface BannerRecord {
+  id: string;
+  title: string;
+  imageUrl: string;
+  targetUrl: string;
+  position: 'lateral' | 'topo';
+  active: boolean;
+  createdAt: string;
+}
+
+let banners: BannerRecord[] = [
+  {
+    id: 'ad-1',
+    title: 'Empreendimento Talatona Blue — Moradias prontas com financiamento facilitado',
+    imageUrl: 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=500&auto=format&fit=crop&q=60',
+    targetUrl: 'https://www.imobiliariatalatona.ao',
+    position: 'lateral',
+    active: true,
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'ad-2',
+    title: 'Unitel Múbilo — Telefone inteligente de última geração com saldo incluído',
+    imageUrl: 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=500&auto=format&fit=crop&q=60',
+    targetUrl: 'https://www.unitel.ao',
+    position: 'lateral',
+    active: true,
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'ad-3',
+    title: 'Espaços Comerciais Centralidade do Sequele — Aluguer direto sem intermediários',
+    imageUrl: 'https://images.unsplash.com/photo-1582407947304-fd86f028f716?w=500&auto=format&fit=crop&q=60',
+    targetUrl: 'https://www.sequele.co.ao',
+    position: 'lateral',
+    active: true,
+    createdAt: new Date().toISOString(),
+  },
+];
+
 const BASELINE_CATEGORY_PRICES_KZ: Record<string, number> = {
   tecnologia: 320000,
   veiculos: 12500000,
@@ -873,6 +913,88 @@ app.post('/api/chats/:chatId/messages', (req, res) => {
   res.status(201).json(newMsg);
 });
 
+app.get('/api/auth/me', (req, res) => {
+  const userId = parseUserIdFromToken(req.headers.authorization);
+  const user = users.find((u) => u.id === userId) || users[0];
+  res.json(user);
+});
+
+app.put('/api/users/:id', (req, res) => {
+  const { id } = req.params;
+  const idx = users.findIndex((u) => u.id === id);
+  if (idx === -1) return res.status(404).json({ error: 'Utilizador não encontrado' });
+
+  const updated: UserRecord = {
+    ...users[idx],
+    name: req.body.name ?? users[idx].name,
+    bio: req.body.bio ?? users[idx].bio,
+    location: req.body.location ?? users[idx].location,
+    avatarUrl: req.body.avatarUrl ?? users[idx].avatarUrl,
+    phone: req.body.phone ?? users[idx].phone,
+  };
+  users[idx] = updated;
+
+  // Sincroniza nome e telefone do vendedor nos anúncios e conversas existentes
+  listings = listings.map((l) =>
+    l.sellerId === id ? { ...l, sellerName: updated.name, sellerPhone: updated.phone } : l
+  );
+  chats.forEach((c) => {
+    if (c.sellerId === id) c.sellerName = updated.name;
+    if (c.buyerId === id) c.buyerName = updated.name;
+  });
+
+  recordAuditLog('USER_PROFILE_UPDATE', updated.email, `Perfil atualizado (${updated.location})`);
+  res.json(updated);
+});
+
+app.get('/api/banners', (_req, res) => {
+  res.json(banners);
+});
+
+app.post('/api/banners', (req, res) => {
+  const created: BannerRecord = {
+    id: 'ad-' + Math.random().toString(36).substring(2, 9),
+    title: req.body.title || 'Campanha Publicitária',
+    imageUrl:
+      req.body.imageUrl ||
+      'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=500&auto=format&fit=crop&q=60',
+    targetUrl: req.body.targetUrl || 'https://segundachance.ao',
+    position: req.body.position === 'topo' ? 'topo' : 'lateral',
+    active: Boolean(req.body.active),
+    createdAt: new Date().toISOString(),
+  };
+  banners = [created, ...banners];
+  recordAuditLog(
+    'BANNER_CREATE',
+    'Publicidade',
+    `Novo banner '${created.title}' (${created.active ? 'Ativo' : 'Pendente'})`
+  );
+  res.status(201).json(created);
+});
+
+app.patch('/api/banners/:id/toggle', (req, res) => {
+  const { id } = req.params;
+  const idx = banners.findIndex((b) => b.id === id);
+  if (idx === -1) return res.status(404).json({ error: 'Banner não encontrado' });
+  banners[idx] = { ...banners[idx], active: !banners[idx].active };
+  recordAuditLog(
+    'BANNER_TOGGLE',
+    'Gestor da Plataforma',
+    `Banner '${banners[idx].title}' ${banners[idx].active ? 'ativado' : 'desativado'}`
+  );
+  res.json(banners[idx]);
+});
+
+app.delete('/api/banners/:id', (req, res) => {
+  const { id } = req.params;
+  const target = banners.find((b) => b.id === id);
+  banners = banners.filter((b) => b.id !== id);
+  if (target) {
+    recordAuditLog('BANNER_DELETE', 'Gestor da Plataforma', `Banner '${target.title}' removido`);
+  }
+  res.status(204).send();
+});
+
 // ============================================================================
 // ROTAS DE GESTÃO PROFUNDA DA PLATAFORMA & TELEMETRIA DO SERVIDOR (/api/admin/*)
 // ============================================================================
@@ -880,7 +1002,7 @@ app.get('/api/admin/stats', (_req, res) => {
   res.json({
     totalUsers: users.length,
     activeListings: listings.filter((l) => l.status === 'disponivel').length,
-    activeBanners: 3,
+    activeBanners: banners.filter((b) => b.active).length,
     messagesSentToday: messages.length,
   });
 });
@@ -906,7 +1028,6 @@ app.get('/api/admin/overview', (_req, res) => {
 
   const mem = process.memoryUsage();
   const memoryUsedMb = Math.round(mem.rss / (1024 * 1024));
-  const memoryMaxMb = Math.max(512, Math.round(os.totalmem() / (1024 * 1024)));
   const memoryUsagePercent = Math.min(99, Math.round((memoryUsedMb / 512) * 1000) / 10);
 
   const activeProvider = getActiveProvider();
@@ -922,7 +1043,7 @@ app.get('/api/admin/overview', (_req, res) => {
     avgListingPriceKz,
     totalChats: chats.length,
     totalMessages: messages.length,
-    activeBanners: 3,
+    activeBanners: banners.filter((b) => b.active).length,
     categoryCounts,
     categoryVolumeKz,
     provinceCounts,

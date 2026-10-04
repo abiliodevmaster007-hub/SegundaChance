@@ -5,6 +5,7 @@ import com.kuenda.marketplace.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
@@ -21,55 +22,61 @@ public class DataLoader implements CommandLineRunner {
     private final BannerRepository bannerRepository;
     private final ChatRepository chatRepository;
     private final MessageRepository messageRepository;
+    private final PasswordEncoder passwordEncoder;
 
     @Override
     public void run(String... args) {
         log.info("Inicializando dados padrão do Kuenda Marketplace...");
 
-        // 1. Criar Utilizadores Iniciais
-        User admin = User.builder()
-                .id("u_admin")
-                .name("Administrador Kuenda")
-                .email("admin@kuenda.ao")
-                .phone("+244 923 000 001")
-                .location("Luanda")
-                .avatarUrl("https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80")
-                .bio("Gestor de moderação e suporte do Marketplace Kuenda.")
-                .role("ADMIN")
-                .rating(5.0)
-                .totalSales(0)
-                .createdAt(Instant.now().toString())
-                .build();
+        // 1. Criar Utilizadores Iniciais com palavras-passe cifradas via BCrypt
+        if (userRepository.count() == 0) {
+            User admin = User.builder()
+                    .id("u_admin")
+                    .name("Administrador Kuenda")
+                    .email("admin@kuenda.ao")
+                    .password(passwordEncoder.encode("admin123456"))
+                    .phone("+244 923 000 001")
+                    .location("Luanda")
+                    .avatarUrl("https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80")
+                    .bio("Gestor de moderação e suporte do Marketplace Kuenda.")
+                    .role("ADMIN")
+                    .rating(5.0)
+                    .totalSales(0)
+                    .createdAt(Instant.now().toString())
+                    .build();
 
-        User seller = User.builder()
-                .id("u_antonio")
-                .name("António Manuel")
-                .email("antonio@kuenda.ao")
-                .phone("+244 923 111 222")
-                .location("Luanda")
-                .avatarUrl("https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80")
-                .bio("Vendedor verificado em Luanda. Artigos de tecnologia e fotografia testados com garantia de funcionamento.")
-                .role("USER")
-                .rating(4.8)
-                .totalSales(14)
-                .createdAt(Instant.now().toString())
-                .build();
+            User seller = User.builder()
+                    .id("u_antonio")
+                    .name("António Manuel")
+                    .email("antonio@kuenda.ao")
+                    .password(passwordEncoder.encode("antonio123"))
+                    .phone("+244 923 111 222")
+                    .location("Luanda")
+                    .avatarUrl("https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80")
+                    .bio("Vendedor verificado em Luanda. Artigos de tecnologia e fotografia testados com garantia de funcionamento.")
+                    .role("USER")
+                    .rating(4.8)
+                    .totalSales(14)
+                    .createdAt(Instant.now().toString())
+                    .build();
 
-        User buyer = User.builder()
-                .id("u_maria")
-                .name("Maria Silva")
-                .email("maria@kuenda.ao")
-                .phone("+244 934 555 666")
-                .location("Benguela")
-                .avatarUrl("https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80")
-                .bio("Compradora ativa em Benguela. Sempre à procura de boas oportunidades e moda.")
-                .role("USER")
-                .rating(5.0)
-                .totalSales(2)
-                .createdAt(Instant.now().toString())
-                .build();
+            User buyer = User.builder()
+                    .id("u_maria")
+                    .name("Maria Silva")
+                    .email("maria@kuenda.ao")
+                    .password(passwordEncoder.encode("maria123"))
+                    .phone("+244 934 555 666")
+                    .location("Benguela")
+                    .avatarUrl("https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80")
+                    .bio("Compradora ativa em Benguela. Sempre à procura de boas oportunidades e moda.")
+                    .role("USER")
+                    .rating(5.0)
+                    .totalSales(2)
+                    .createdAt(Instant.now().toString())
+                    .build();
 
-        userRepository.saveAll(Arrays.asList(admin, seller, buyer));
+            userRepository.saveAll(Arrays.asList(admin, seller, buyer));
+        }
 
         // 2. Criar Anúncios Iniciais
         if (listingRepository.count() == 0) {

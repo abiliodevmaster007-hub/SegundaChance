@@ -35,23 +35,35 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         try {
             String jwt = getJwtFromRequest(request);
 
-            if (StringUtils.hasText(jwt) && tokenProvider.validateToken(jwt)) {
-                Claims claims = tokenProvider.getClaimsFromJWT(jwt);
-                String userId = claims.getSubject();
-                String role = (String) claims.get("role");
+            if (StringUtils.hasText(jwt)) {
+                if (tokenProvider.validateToken(jwt)) {
+                    Claims claims = tokenProvider.getClaimsFromJWT(jwt);
+                    String userId = claims.getSubject();
+                    String role = claims.get("role", String.class);
 
-                List<SimpleGrantedAuthority> authorities = Collections.singletonList(
-                        new SimpleGrantedAuthority("ROLE_" + (role != null ? role.toUpperCase() : "USER"))
-                );
+                    if (StringUtils.hasText(userId)) {
+                        String normalizedRole = StringUtils.hasText(role) ? role.trim().toUpperCase() : "USER";
+                        if (normalizedRole.startsWith("ROLE_")) {
+                            normalizedRole = normalizedRole.substring(5);
+                        }
 
-                UsernamePasswordAuthenticationToken authentication =
-                        new UsernamePasswordAuthenticationToken(userId, null, authorities);
-                authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                        List<SimpleGrantedAuthority> authorities = Collections.singletonList(
+                                new SimpleGrantedAuthority("ROLE_" + normalizedRole)
+                        );
 
-                SecurityContextHolder.getContext().setAuthentication(authentication);
+                        UsernamePasswordAuthenticationToken authentication =
+                                new UsernamePasswordAuthenticationToken(userId, null, authorities);
+                        authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+
+                        SecurityContextHolder.getContext().setAuthentication(authentication);
+                    }
+                } else {
+                    SecurityContextHolder.clearContext();
+                }
             }
         } catch (Exception ex) {
-            log.error("Não foi possível autenticar o utilizador no contexto de segurança", ex);
+            SecurityContextHolder.clearContext();
+            log.error("Falha ao processar autenticação JWT no contexto de segurança", ex);
         }
 
         filterChain.doFilter(request, response);
@@ -60,7 +72,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private String getJwtFromRequest(HttpServletRequest request) {
         String bearerToken = request.getHeader("Authorization");
         if (StringUtils.hasText(bearerToken) && bearerToken.startsWith("Bearer ")) {
-            return bearerToken.substring(7);
+            return bearerToken.substring(7).trim();
         }
         return null;
     }

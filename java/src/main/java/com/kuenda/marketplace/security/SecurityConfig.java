@@ -1,9 +1,11 @@
 package com.kuenda.marketplace.security;
 
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -14,6 +16,8 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+
+import java.nio.charset.StandardCharsets;
 
 @Configuration
 @EnableWebSecurity
@@ -31,40 +35,49 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                // Desativa CSRF pois usamos autenticação REST via Tokens JWT
                 .csrf(AbstractHttpConfigurer::disable)
-                
-                // Desativa criação de sessão em memória (Stateless)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                
-                // Permite iframes para a consola do H2
-                .headers(headers -> headers.frameOptions(HeadersConfigurer.FrameOptionsConfig::disable))
-                
+                .headers(headers -> headers.frameOptions(HeadersConfigurer.FrameOptionsConfig::sameOrigin))
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint((request, response, authException) -> {
+                            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                            response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+                            response.getWriter().write("{\"error\":\"Autenticação obrigatória. Token JWT ausente ou inválido.\"}");
+                        })
+                        .accessDeniedHandler((request, response, accessDeniedException) -> {
+                            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                            response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+                            response.getWriter().write("{\"error\":\"Acesso negado. Permissão insuficiente para este recurso.\"}");
+                        })
+                )
                 .authorizeHttpRequests(auth -> auth
-                        // Endpoints públicos de leitura
-                        .requestMatchers(HttpMethod.GET, "/api/listings/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/banners/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/users/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/admin/stats").permitAll()
-                        
-                        // Endpoints de autenticação pública e assistente Kuenda AI
-                        .requestMatchers("/api/auth/**").permitAll()
-                        .requestMatchers("/api/ai/**").permitAll()
-                        
-                        // Handshake e broker WebSocket STOMP
-                        .requestMatchers("/ws/**").permitAll()
-                        
-                        // Consola H2 para desenvolvimento
-                        .requestMatchers("/h2-console/**").permitAll()
-                        
-                        // Permitir requests OPTIONS do CORS pre-flight
+                        // Preflight CORS
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        
-                        // Todas as operações de mutação ou privadas exigem autenticação válida (ou contexto aberto para testes)
-                        .anyRequest().permitAll()
+
+                        // Autenticação pública (apenas login e registo; /api/auth/me exige autenticação)
+                        .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/register").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/auth/me").authenticated()
+
+                        // Leitura pública do catálogo, banners e perfil público de utilizadores
+                        .requestMatchers(HttpMethod.GET, "/api/listings", "/api/listings/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/banners", "/api/banners/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/users/*").permitAll()
+
+                        // Handshake WebSocket
+                        .requestMatchers("/ws/**").permitAll()
+
+                        // Rotas administrativas exigem estritamente ROLE_ADMIN
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
+
+                        // Rotas do assistente Kuenda AI exigem utilizador autenticado
+                        .requestMatchers("/api/ai/**").authenticated()
+
+                        // Qualquer outra rota (POST/PATCH/DELETE de anúncios, chats, mensagens, edição de perfil) exige autenticação
+                        .anyRequest().authenticated()
                 );
 
-        // Adiciona o filtro JWT antes do filtro padrão de autenticação
         http.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

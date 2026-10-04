@@ -17,6 +17,14 @@
       if (typeof global === 'undefined') {
         var global = window;
       }
+      try {
+        var savedTheme = localStorage.getItem('sc_theme');
+        if (savedTheme === 'dark') {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+      } catch (e) {}
     </script>
   </head>
   <body>

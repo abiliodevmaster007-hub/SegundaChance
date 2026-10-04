@@ -13,9 +13,12 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -28,17 +31,27 @@ public class AuthController {
 
     private final UserRepository userRepository;
     private final JwtTokenProvider jwtTokenProvider;
+    private final PasswordEncoder passwordEncoder;
 
     @PostMapping("/login")
     public ResponseEntity<?> login(@Valid @RequestBody AuthRequestDTO authRequest) {
-        Optional<User> userOpt = userRepository.findByEmail(authRequest.getEmail());
+        String normalizedEmail = authRequest.getEmail().trim().toLowerCase();
+        Optional<User> userOpt = userRepository.findByEmail(normalizedEmail);
 
         if (userOpt.isEmpty()) {
+            log.warn("Tentativa de login falhada: e-mail não encontrado ({})", normalizedEmail);
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body("Credenciais inválidas: utilizador não encontrado.");
+                    .body(Map.of("error", "Credenciais inválidas: e-mail ou palavra-passe incorretos."));
         }
 
         User user = userOpt.get();
+        if (!StringUtils.hasText(user.getPassword()) ||
+                !passwordEncoder.matches(authRequest.getPassword(), user.getPassword())) {
+            log.warn("Tentativa de login falhada: palavra-passe incorreta para {}", normalizedEmail);
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("error", "Credenciais inválidas: e-mail ou palavra-passe incorretos."));
+        }
+
         String token = jwtTokenProvider.generateToken(user.getId(), user.getEmail(), user.getRole());
 
         log.info("Autenticação bem-sucedida para o utilizador: {} (ID: {})", user.getEmail(), user.getId());
@@ -52,17 +65,22 @@ public class AuthController {
 
     @PostMapping("/register")
     public ResponseEntity<?> register(@Valid @RequestBody RegisterRequestDTO registerRequest) {
-        if (userRepository.findByEmail(registerRequest.getEmail()).isPresent()) {
+        String normalizedEmail = registerRequest.getEmail().trim().toLowerCase();
+
+        if (userRepository.findByEmail(normalizedEmail).isPresent()) {
             return ResponseEntity.status(HttpStatus.CONFLICT)
-                    .body("Já existe uma conta associada a este endereço de email.");
+                    .body(Map.of("error", "Já existe uma conta associada a este endereço de e-mail."));
         }
+
+        String hashedPassword = passwordEncoder.encode(registerRequest.getPassword());
 
         User newUser = User.builder()
                 .id("u_" + UUID.randomUUID().toString().substring(0, 8))
-                .name(registerRequest.getName())
-                .email(registerRequest.getEmail())
-                .phone(registerRequest.getPhone() != null ? registerRequest.getPhone() : "")
-                .location(registerRequest.getLocation() != null ? registerRequest.getLocation() : "Luanda")
+                .name(registerRequest.getName().trim())
+                .email(normalizedEmail)
+                .password(hashedPassword)
+                .phone(StringUtils.hasText(registerRequest.getPhone()) ? registerRequest.getPhone().trim() : "")
+                .location(StringUtils.hasText(registerRequest.getLocation()) ? registerRequest.getLocation().trim() : "Luanda")
                 .avatarUrl("https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80")
                 .bio("Novo membro no Kuenda Marketplace Angola.")
                 .role("USER")
@@ -74,7 +92,7 @@ public class AuthController {
         User savedUser = userRepository.save(newUser);
         String token = jwtTokenProvider.generateToken(savedUser.getId(), savedUser.getEmail(), savedUser.getRole());
 
-        log.info("Novo utilizador registado com sucesso: {}", savedUser.getEmail());
+        log.info("Novo utilizador registado com sucesso: {} (ID: {})", savedUser.getEmail(), savedUser.getId());
 
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(AuthResponseDTO.builder()
@@ -87,13 +105,15 @@ public class AuthController {
     @GetMapping("/me")
     public ResponseEntity<?> getCurrentUser() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || auth.getPrincipal() == null || "anonymousUser".equals(auth.getPrincipal())) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Sessão não autenticada.");
+        if (auth == null || !auth.isAuthenticated() || auth.getPrincipal() == null || "anonymousUser".equals(auth.getPrincipal())) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("error", "Sessão não autenticada."));
         }
 
-        String userId = (String) auth.getPrincipal();
+        String userId = auth.getPrincipal().toString();
         return userRepository.findById(userId)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+                .<ResponseEntity<?>>map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(Map.of("error", "Utilizador não encontrado.")));
     }
 }

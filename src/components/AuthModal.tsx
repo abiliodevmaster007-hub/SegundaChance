@@ -124,14 +124,14 @@ export default function AuthModal({
 
           {/* Feedback Messages */}
           {error && (
-            <div className="mb-4 flex items-center space-x-2 rounded-xl bg-red-50 p-4 text-xs font-semibold text-red-750 ring-1 ring-red-100">
+            <div className="mb-4 flex items-center space-x-2 rounded-xl bg-red-50 dark:bg-red-950/50 p-4 text-xs font-semibold text-red-700 dark:text-red-300 ring-1 ring-red-100 dark:ring-red-900">
               <AlertCircle className="h-4.5 w-4.5 shrink-0" />
               <span>{error}</span>
             </div>
           )}
 
           {success && (
-            <div className="mb-4 flex items-center space-x-2 rounded-xl bg-emerald-50 p-4 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-100">
+            <div className="mb-4 flex items-center space-x-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 p-4 text-xs font-semibold text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-100 dark:ring-emerald-900">
               <CheckCircle2 className="h-4.5 w-4.5 shrink-0" />
               <span>{success}</span>
             </div>

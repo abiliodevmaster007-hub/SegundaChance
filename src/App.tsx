@@ -17,13 +17,15 @@ import FloatingAiAssistant from './components/FloatingAiAssistant';
 import Footer from './components/Footer';
 import ToastNotifications from './components/ToastNotifications';
 import { useAppLogic } from './hooks/useAppLogic';
-import { AdBanner, ListingPrefillData } from './types';
+import { ListingPrefillData } from './types';
 
 export default function App() {
   const location = useLocation();
   const [aiListingPrefill, setAiListingPrefill] = useState<ListingPrefillData | null>(null);
 
   const {
+    darkMode,
+    toggleDarkMode,
     activeTab,
     setActiveTab,
     currentUser,
@@ -60,9 +62,7 @@ export default function App() {
     sellerListings,
     sellerListingsLoading,
     ads,
-    setAds,
     adminStats,
-    setAdminStats,
     notificationCount,
     setNotificationCount,
     toasts,
@@ -72,6 +72,9 @@ export default function App() {
     handleUpdateProfile,
     handleUpdateListingStatusAdmin,
     handleDeleteListingAdmin,
+    handleCreateBanner,
+    handleToggleBanner,
+    handleDeleteBanner,
     fetchListings,
     fetchSellerListings,
     handleSearchSubmit,
@@ -93,7 +96,7 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen flex-col bg-slate-50 overflow-hidden font-sans">
+    <div className="flex h-screen flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 overflow-hidden font-sans transition-colors">
       <Header
         currentUser={currentUser}
         onOpenAuth={(mode) => {
@@ -114,6 +117,8 @@ export default function App() {
         }}
         notificationCount={notificationCount}
         onResetNotifications={() => setNotificationCount(0)}
+        darkMode={darkMode}
+        onToggleDarkMode={toggleDarkMode}
       />
 
       <div className="flex flex-1 overflow-hidden">
@@ -204,24 +209,13 @@ export default function App() {
                 path="/profile"
                 element={
                   currentUser ? (
-                    <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto w-full bg-white flex flex-col">
+                    <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto w-full bg-white dark:bg-slate-900 flex flex-col">
                       <UserProfile
                         currentUser={currentUser}
                         onUpdateProfile={handleUpdateProfile}
                         listings={listings}
                         onOpenListingDetail={setSelectedListing}
-                        onAddPendingBanner={(bannerData) => {
-                          const b: AdBanner = {
-                            ...bannerData,
-                            id: 'ad-' + Math.random().toString(36).substring(2, 9),
-                            createdAt: new Date().toISOString(),
-                          };
-                          setAds((p) => [b, ...p]);
-                          setAdminStats((p) => ({
-                            ...p,
-                            messagesSentToday: p.messagesSentToday + 1,
-                          }));
-                        }}
+                        onAddPendingBanner={handleCreateBanner}
                       />
                     </main>
                   ) : (
@@ -232,33 +226,16 @@ export default function App() {
               <Route
                 path="/admin"
                 element={
-                  <main className="flex-1 overflow-y-auto w-full bg-slate-50 flex flex-col">
+                  <main className="flex-1 overflow-y-auto w-full bg-slate-50 dark:bg-slate-950 flex flex-col">
                     <AdminPanel
                       stats={adminStats}
                       listings={listings}
                       banners={ads}
                       onUpdateListingStatus={handleUpdateListingStatusAdmin}
                       onDeleteListing={handleDeleteListingAdmin}
-                      onCreateBanner={(btn) => {
-                        const b: AdBanner = {
-                          ...btn,
-                          id: 'ad-' + Math.random().toString(36).substring(2, 9),
-                          createdAt: new Date().toISOString(),
-                        };
-                        setAds((prev) => [b, ...prev]);
-                        setAdminStats((prev) => ({
-                          ...prev,
-                          activeBanners: prev.activeBanners + 1,
-                        }));
-                      }}
-                      onToggleBanner={(id) =>
-                        setAds((p) =>
-                          p.map((b) => (b.id === id ? { ...b, active: !b.active } : b))
-                        )
-                      }
-                      onDeleteBanner={(id) => {
-                        setAds((p) => p.filter((b) => b.id !== id));
-                      }}
+                      onCreateBanner={handleCreateBanner}
+                      onToggleBanner={handleToggleBanner}
+                      onDeleteBanner={handleDeleteBanner}
                     />
                   </main>
                 }
@@ -266,7 +243,7 @@ export default function App() {
               <Route
                 path="/terms"
                 element={
-                  <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto w-full bg-white flex flex-col">
+                  <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto w-full bg-white dark:bg-slate-900 flex flex-col">
                     <TermsTab />
                   </main>
                 }
