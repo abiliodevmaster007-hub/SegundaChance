@@ -191,17 +191,26 @@ export function useAppLogic() {
     alert('Informação de Perfil atualizada com total segurança!');
   };
 
-  const handleUpdateListingStatusAdmin = (listingId: string, status: 'disponivel' | 'vendido' | 'suspenso') => {
-    setListings(prev => prev.map(l => l.id === listingId ? { ...l, status: status === 'suspenso' ? 'vendido' : status } : l));
-    setSellerListings(prev => prev.map(l => l.id === listingId ? { ...l, status: status === 'suspenso' ? 'vendido' : status } : l));
-    alert('Estado do desapego atualizado via Painel do Administrador!');
+  const handleUpdateListingStatusAdmin = async (listingId: string, status: 'disponivel' | 'vendido' | 'suspenso') => {
+    const normalizedStatus = status === 'suspenso' ? 'vendido' : status;
+    setListings(prev => prev.map(l => l.id === listingId ? { ...l, status: normalizedStatus } : l));
+    setSellerListings(prev => prev.map(l => l.id === listingId ? { ...l, status: normalizedStatus } : l));
+    try {
+      await fetch(getApiUrl(`/api/listings/${listingId}/status`), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: normalizedStatus })
+      });
+    } catch (e) {}
   };
 
-  const handleDeleteListingAdmin = (listingId: string) => {
-    if (!confirm('Deseja realmente apagar o anúncio de forma irreversível do banco?')) return;
+  const handleDeleteListingAdmin = async (listingId: string) => {
     setListings(prev => prev.filter(l => l.id !== listingId));
     setSellerListings(prev => prev.filter(l => l.id !== listingId));
     setAdminStats(prev => ({ ...prev, activeListings: Math.max(0, prev.activeListings - 1) }));
+    try {
+      await fetch(getApiUrl(`/api/listings/${listingId}`), { method: 'DELETE' });
+    } catch (e) {}
   };
 
   // REST endpoints simulators

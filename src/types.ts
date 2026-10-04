@@ -29,6 +29,58 @@ export interface AdminDashboardStats {
   messagesSentToday: number;
 }
 
+// ============================================================================
+// TIPOS DO PAINEL CENTRAL DE GESTOR DA PLATAFORMA & TELEMETRIA BACKEND
+// ============================================================================
+export interface ServerHealthMetrics {
+  uptimeSeconds: number;
+  memoryUsedMb: number;
+  memoryMaxMb: number;
+  memoryUsagePercent: number;
+  cpuCores: number;
+  runtimeVersion: string;
+  databaseEngine: string;
+  webSocketBrokerStatus: string;
+  aiProvider: string;
+  aiModel: string;
+  serverTimestamp: string;
+}
+
+export interface EndpointMetric {
+  method: string;
+  path: string;
+  description: string;
+  callsCount: number;
+  avgLatencyMs: number;
+  status: string;
+}
+
+export interface AuditLogEntry {
+  id: string;
+  timestamp: string;
+  action: string;
+  actor: string;
+  details: string;
+}
+
+export interface PlatformManagementOverview {
+  totalUsers: number;
+  totalAdmins: number;
+  activeListings: number;
+  soldListings: number;
+  totalGmvKz: number;
+  totalSoldVolumeKz: number;
+  avgListingPriceKz: number;
+  totalChats: number;
+  totalMessages: number;
+  activeBanners: number;
+  categoryCounts: Record<string, number>;
+  categoryVolumeKz: Record<string, number>;
+  provinceCounts: Record<string, number>;
+  serverHealth: ServerHealthMetrics;
+  apiEndpoints: EndpointMetric[];
+  recentLogs: AuditLogEntry[];
+}
 
 export interface Listing {
   id: string;
@@ -67,6 +119,79 @@ export interface Chat {
   sellerName: string;
   lastMessageText: string;
   lastMessageTime: string;
+}
+
+// ============================================================================
+// TIPOS DO ECOSSISTEMA KUENDA AI (SPRING AI & FUNCTION CALLING)
+// ============================================================================
+export interface AiPriceAnalysis {
+  category: string;
+  location: string;
+  condition: string;
+  targetPriceKz: number;
+  minPriceKz: number;
+  avgPriceKz: number;
+  maxPriceKz: number;
+  suggestedOptimalPriceKz: number;
+  verdict: 'ABAIXO_DO_MERCADO' | 'PRECO_JUSTO' | 'ACIMA_DO_MERCADO';
+  diffPercentage: number;
+  sampleSize: number;
+  explanation: string;
+  safetyTips: string[];
+}
+
+export interface AiOptimizedListingDraft {
+  suggestedTitle: string;
+  suggestedDescription: string;
+  suggestedCategory: string;
+  suggestedCondition: string;
+  suggestedPriceKz: number;
+  highlightTags: string[];
+  sellingTips: string[];
+}
+
+export interface AiSellerDiagnostic {
+  sellerId: string;
+  totalListings: number;
+  activeListings: number;
+  soldListings: number;
+  conversionRatePercent: number;
+  totalActiveValueKz: number;
+  totalSoldRevenueKz: number;
+  overallHealth: 'EXCELENTE' | 'BOM' | 'PRECISA_ATENCAO';
+  actionableInsights: string[];
+  pricingAlerts: string[];
+}
+
+export interface AiAssistantResponse {
+  reply: string;
+  providerUsed: string;
+  modelUsed: string;
+  toolsExecuted: string[];
+  priceAnalysis?: AiPriceAnalysis | null;
+  optimizedDraft?: AiOptimizedListingDraft | null;
+  sellerDiagnostic?: AiSellerDiagnostic | null;
+  recommendedListings?: Listing[] | null;
+  suggestedReplies?: string[] | null;
+  timestamp: string;
+}
+
+export interface AiConversationEntry {
+  id: string;
+  sender: 'user' | 'assistant';
+  text: string;
+  roleContext: 'BUYER' | 'SELLER';
+  responseMeta?: AiAssistantResponse;
+  createdAt: string;
+}
+
+export interface ListingPrefillData {
+  title: string;
+  description: string;
+  price: number;
+  category: string;
+  condition: string;
+  location?: string;
 }
 
 export const ANGOLA_PROVINCES = [

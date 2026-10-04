@@ -1,6 +1,8 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { User, Chat, Message } from '../types';
-import { Inbox, MessageSquare, Loader2, Send } from 'lucide-react';
+import { getApiUrl } from '../apiConfig';
+import { Inbox, MessageSquare, Loader2, Send, Sparkles } from 'lucide-react';
 
 interface MessagesTabProps {
   currentUser: User | null;
@@ -27,30 +29,63 @@ export default function MessagesTab({
   typedMessage,
   setTypedMessage,
   messageSending,
-  onSendMessage
+  onSendMessage,
 }: MessagesTabProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
 
-  // Automatically scroll bottom whenever messages list is received or updated
   useEffect(() => {
     if (messages.length > 0) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages]);
 
+  useEffect(() => {
+    setAiSuggestions([]);
+  }, [selectedChat?.id]);
+
+  const handleLoadAiSuggestions = async () => {
+    if (!selectedChat || loadingSuggestions) return;
+    setLoadingSuggestions(true);
+    const isSeller = selectedChat.sellerId === currentUser?.id;
+
+    try {
+      const res = await fetch(getApiUrl('/api/ai/chat-suggestions'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chatId: selectedChat.id,
+          roleContext: isSeller ? 'SELLER' : 'BUYER',
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAiSuggestions(data.suggestedReplies || []);
+      }
+    } catch (e) {
+      // Silencioso
+    } finally {
+      setLoadingSuggestions(false);
+    }
+  };
+
   return (
     <div className="flex flex-1 overflow-hidden w-full bg-white">
-      
       {/* Chats Pane List */}
-      <div className={`w-full md:w-80 border-r border-slate-200 flex flex-col shrink-0 ${
-        selectedChat ? 'hidden md:flex' : 'flex'
-      }`}>
+      <div
+        className={`w-full md:w-80 border-r border-slate-200 flex flex-col shrink-0 ${
+          selectedChat ? 'hidden md:flex' : 'flex'
+        }`}
+      >
         <div className="p-4 border-b border-slate-200 bg-slate-50/50">
-          <h2 className="font-display text-lg font-black text-slate-800 flex items-center gap-2 uppercase tracking-tight">
+          <h2 className="font-display text-lg font-bold text-slate-900 flex items-center gap-2 tracking-tight">
             <Inbox className="h-5 w-5 text-indigo-600" />
             <span>As Minhas Negociações</span>
           </h2>
-          <p className="text-[11px] text-slate-450 font-bold font-mono uppercase tracking-wider mt-0.5">Bate-papo em tempo real com utilizadores</p>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Conversas diretas com compradores e vendedores
+          </p>
         </div>
 
         {chatsLoading ? (
@@ -61,7 +96,9 @@ export default function MessagesTab({
           <div className="flex-1 flex flex-col items-center justify-center text-center p-6 text-slate-400 bg-slate-50/30">
             <MessageSquare className="h-10 w-10 text-slate-300 mb-3" />
             <span className="text-sm font-bold text-slate-700">Sem negociações ativas</span>
-            <p className="text-xs text-slate-400 mt-1">Navegue pelos anúncios e clique em contactar vendedor para começar.</p>
+            <p className="text-xs text-slate-400 mt-1">
+              Navegue pelos anúncios e clique em contactar vendedor para começar.
+            </p>
           </div>
         ) : (
           <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
@@ -75,7 +112,9 @@ export default function MessagesTab({
                   key={chat.id}
                   onClick={() => setSelectedChat(chat)}
                   className={`p-4 flex items-center space-x-3 cursor-pointer transition ${
-                    isSelected ? 'bg-indigo-50/70 border-l-4 border-indigo-600' : 'hover:bg-slate-50'
+                    isSelected
+                      ? 'bg-indigo-50/70 border-l-4 border-indigo-600'
+                      : 'hover:bg-slate-50'
                   }`}
                 >
                   <img
@@ -86,14 +125,23 @@ export default function MessagesTab({
                   />
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-start">
-                      <span className="text-xs font-black text-slate-800 truncate">{contactName}</span>
-                      <span className="text-[9px] text-slate-400 font-mono font-bold">
-                        {new Date(chat.lastMessageTime).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })}
+                      <span className="text-xs font-bold text-slate-900 truncate">
+                        {contactName}
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-mono tabular-nums">
+                        {new Date(chat.lastMessageTime).toLocaleTimeString('pt-PT', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
                       </span>
                     </div>
-                    
-                    <p className="text-xs font-bold text-indigo-650 truncate mt-0.5">{chat.listingTitle}</p>
-                    <p className="text-[11px] text-slate-400 font-medium truncate mt-0.5">{chat.lastMessageText}</p>
+
+                    <p className="text-xs font-semibold text-indigo-600 truncate mt-0.5">
+                      {chat.listingTitle}
+                    </p>
+                    <p className="text-xs text-slate-500 truncate mt-0.5">
+                      {chat.lastMessageText}
+                    </p>
                   </div>
                 </div>
               );
@@ -103,114 +151,199 @@ export default function MessagesTab({
       </div>
 
       {/* Individual Active Chat Conversation Flow */}
-      <div className={`flex-1 flex flex-col bg-slate-50 ${
-        !selectedChat ? 'hidden md:flex' : 'flex'
-      }`}>
-        {selectedChat ? (
-          <>
-            {/* Active Chat Header */}
-            <div className="p-4 border-b border-slate-200 bg-white flex items-center justify-between shrink-0 shadow-xs">
-              <div className="flex items-center space-x-3">
-                <button
-                  onClick={() => setSelectedChat(null)}
-                  className="md:hidden p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 mr-1 font-bold text-xs"
-                >
-                  ← Voltar
-                </button>
-                
-                <img
-                  src={selectedChat.listingImageUrl}
-                  alt={selectedChat.listingTitle}
-                  className="h-10 w-10 rounded-lg object-cover bg-slate-100 shrink-0 border border-slate-150"
-                  referrerPolicy="no-referrer"
-                />
-                <div>
-                  <h3 className="text-sm font-black text-slate-900 leading-tight">
-                    {selectedChat.sellerId === currentUser?.id ? selectedChat.buyerName : selectedChat.sellerName}
-                  </h3>
-                  <p className="text-xs text-indigo-650 font-bold">
-                    Artigo: {selectedChat.listingTitle} — <span className="font-mono text-slate-900">{selectedChat.listingPrice.toLocaleString('pt-PT')} Kz</span>
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Message Stream */}
-            <div 
-              id="chat-messages-scroll"
-              className="flex-1 p-4 overflow-y-auto space-y-3 flex flex-col"
+      <div
+        className={`flex-1 flex flex-col bg-slate-50 ${
+          !selectedChat ? 'hidden md:flex' : 'flex'
+        }`}
+      >
+        <AnimatePresence mode="wait">
+          {selectedChat ? (
+            <motion.div
+              key={selectedChat.id}
+              initial={{ opacity: 0, x: 10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -8 }}
+              transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+              className="flex-1 flex flex-col overflow-hidden"
             >
-              {messagesLoading ? (
-                <div className="flex-1 flex items-center justify-center">
-                  <Loader2 className="h-8 w-8 text-indigo-600 animate-spin" />
-                </div>
-              ) : messages.length === 0 ? (
-                <div className="flex-1 flex flex-col items-center justify-center text-center p-8 text-slate-400">
-                  <MessageSquare className="h-8 w-8 text-slate-300 mb-2" />
-                  <p className="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Comece a negociar!</p>
-                  <p className="text-[10px] text-slate-400 mt-1 max-w-xs leading-relaxed font-semibold">
-                    Indique se tem interesse, pergunte sobre o estado ou proponha um local público seguro próximo de si.
-                  </p>
-                </div>
-              ) : (
-                messages.map((msg) => {
-                  const isMe = msg.senderId === currentUser?.id;
-                  return (
-                    <div
-                      key={msg.id}
-                      className={`flex flex-col max-w-[75%] ${isMe ? 'self-end items-end' : 'self-start items-start'} animate-fadeIn`}
-                    >
-                      <div className={`p-3.5 rounded-xl text-sm font-semibold leading-relaxed ${
-                        isMe 
-                          ? 'bg-indigo-600 text-white rounded-br-none shadow-sm shadow-indigo-600/10' 
-                          : 'bg-white border border-slate-200 text-slate-800 rounded-bl-none shadow-xs'
-                      }`}>
-                        {msg.text}
-                      </div>
-                      <span className="text-[9px] text-slate-400 font-mono font-bold mt-1 px-1">
-                        {new Date(msg.createdAt).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })}
+              {/* Active Chat Header */}
+              <div className="p-4 border-b border-slate-200 bg-white flex items-center justify-between shrink-0">
+                <div className="flex items-center space-x-3">
+                  <button
+                    onClick={() => setSelectedChat(null)}
+                    className="md:hidden p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 mr-1 font-bold text-xs cursor-pointer"
+                  >
+                    ← Voltar
+                  </button>
+
+                  <img
+                    src={selectedChat.listingImageUrl}
+                    alt={selectedChat.listingTitle}
+                    className="h-10 w-10 rounded-lg object-cover bg-slate-100 shrink-0 border border-slate-200"
+                    referrerPolicy="no-referrer"
+                  />
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 leading-tight">
+                      {selectedChat.sellerId === currentUser?.id
+                        ? selectedChat.buyerName
+                        : selectedChat.sellerName}
+                    </h3>
+                    <p className="text-xs text-indigo-600 font-medium">
+                      {selectedChat.listingTitle} ·{' '}
+                      <span className="font-mono tabular-nums text-slate-900 font-semibold">
+                        {selectedChat.listingPrice.toLocaleString('pt-PT')} Kz
                       </span>
-                    </div>
-                  );
-                })
-              )}
-              {/* Dummy bottom element for auto scrolling */}
-              <div ref={messagesEndRef} />
-            </div>
+                    </p>
+                  </div>
+                </div>
 
-            {/* Input Submission Bar */}
-            <div className="p-4 bg-white border-t border-slate-200 shrink-0">
-              <form onSubmit={onSendMessage} className="flex gap-2">
-                <input
-                  type="text"
-                  value={typedMessage}
-                  onChange={(e) => setTypedMessage(e.target.value)}
-                  placeholder="Escreva a sua mensagem aqui..."
-                  className="flex-1 rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-slate-50/50 font-semibold"
-                />
                 <button
-                  type="submit"
-                  disabled={messageSending || !typedMessage.trim()}
-                  className="p-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white rounded-xl transition shrink-0 inline-flex items-center justify-center cursor-pointer shadow-md shadow-indigo-600/10"
+                  type="button"
+                  disabled={loadingSuggestions}
+                  onClick={handleLoadAiSuggestions}
+                  className="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-indigo-50 hover:border-indigo-200 text-xs font-semibold text-slate-700 inline-flex items-center gap-1.5 transition cursor-pointer whitespace-nowrap"
                 >
-                  <Send className="h-5 w-5" />
+                  {loadingSuggestions ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-indigo-600" />
+                  ) : (
+                    <Sparkles className="h-3.5 w-3.5 text-indigo-600" />
+                  )}
+                  <span>Sugerir Resposta IA</span>
                 </button>
-              </form>
-            </div>
-          </>
-        ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-center p-8 text-slate-450 bg-slate-50/40">
-            <div className="h-14 w-14 rounded-full bg-white shadow-sm border border-slate-200/50 flex items-center justify-center text-indigo-500 mb-4">
-              <MessageSquare className="h-7 w-7" />
-            </div>
-            <h3 className="font-display text-base font-black text-slate-700 uppercase tracking-tight">Selecione uma Discussão</h3>
-            <p className="text-xs text-slate-400 mt-1 max-w-xs leading-relaxed font-semibold">
-              Escolha uma conversa no painel esquerdo para planear a sua troca com o vendedor de forma transparente e segura.
-            </p>
-          </div>
-        )}
-      </div>
+              </div>
 
+              {/* Message Stream */}
+              <div
+                id="chat-messages-scroll"
+                className="flex-1 p-4 overflow-y-auto space-y-3 flex flex-col"
+              >
+                {messagesLoading ? (
+                  <div className="flex-1 flex items-center justify-center">
+                    <Loader2 className="h-8 w-8 text-indigo-600 animate-spin" />
+                  </div>
+                ) : messages.length === 0 ? (
+                  <div className="flex-1 flex flex-col items-center justify-center text-center p-8 text-slate-400">
+                    <MessageSquare className="h-8 w-8 text-slate-300 mb-2" />
+                    <p className="text-xs font-bold text-slate-600">Comece a negociar!</p>
+                    <p className="text-xs text-slate-400 mt-1 max-w-xs leading-relaxed">
+                      Indique se tem interesse, pergunte sobre o estado ou clique em "Sugerir Resposta IA" acima.
+                    </p>
+                  </div>
+                ) : (
+                  messages.map((msg) => {
+                    const isMe = msg.senderId === currentUser?.id;
+                    return (
+                      <motion.div
+                        key={msg.id}
+                        initial={{ opacity: 0, y: 6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.15 }}
+                        className={`flex flex-col max-w-[75%] ${
+                          isMe ? 'self-end items-end' : 'self-start items-start'
+                        }`}
+                      >
+                        <div
+                          className={`p-3.5 rounded-xl text-sm leading-relaxed ${
+                            isMe
+                              ? 'bg-indigo-600 text-white rounded-br-none'
+                              : 'bg-white border border-slate-200 text-slate-800 rounded-bl-none'
+                          }`}
+                        >
+                          {msg.text}
+                        </div>
+                        <span className="text-[10px] text-slate-400 font-mono tabular-nums mt-1 px-1">
+                          {new Date(msg.createdAt).toLocaleTimeString('pt-PT', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </span>
+                      </motion.div>
+                    );
+                  })
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+
+              {/* Sugestões Rápidas do Kuenda AI */}
+              <AnimatePresence>
+                {aiSuggestions.length > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 6 }}
+                    transition={{ duration: 0.16 }}
+                    className="px-4 py-2.5 bg-slate-100/80 border-t border-slate-200 space-y-1.5"
+                  >
+                    <div className="flex items-center justify-between text-xs text-slate-600">
+                      <span className="font-semibold">
+                        Sugestões de Negociação Kuenda AI (Clique para usar):
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setAiSuggestions([])}
+                        className="text-slate-400 hover:text-slate-700 text-xs cursor-pointer"
+                      >
+                        Fechar
+                      </button>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {aiSuggestions.map((reply, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => setTypedMessage(reply)}
+                          className="text-left px-3 py-1.5 rounded-lg bg-white border border-slate-200 hover:border-indigo-400 text-xs text-slate-800 transition cursor-pointer"
+                        >
+                          {reply}
+                        </button>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Input Submission Bar */}
+              <div className="p-4 bg-white border-t border-slate-200 shrink-0">
+                <form onSubmit={onSendMessage} className="flex gap-2">
+                  <input
+                    type="text"
+                    value={typedMessage}
+                    onChange={(e) => setTypedMessage(e.target.value)}
+                    placeholder="Escreva a sua mensagem ou use o assistente IA..."
+                    className="flex-1 rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-900 outline-none focus:border-indigo-500 bg-slate-50/50"
+                  />
+                  <button
+                    type="submit"
+                    disabled={messageSending || !typedMessage.trim()}
+                    className="p-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white rounded-xl transition shrink-0 inline-flex items-center justify-center cursor-pointer"
+                  >
+                    <Send className="h-5 w-5" />
+                  </button>
+                </form>
+              </div>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="empty-chat"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.16 }}
+              className="flex-1 flex flex-col items-center justify-center text-center p-8 text-slate-500 bg-slate-50/40"
+            >
+              <div className="h-14 w-14 rounded-full bg-white border border-slate-200 flex items-center justify-center text-indigo-600 mb-4">
+                <MessageSquare className="h-7 w-7" />
+              </div>
+              <h3 className="font-display text-base font-bold text-slate-800">
+                Selecione uma Conversa
+              </h3>
+              <p className="text-xs text-slate-500 mt-1 max-w-xs leading-relaxed">
+                Escolha uma conversa no painel esquerdo e utilize as sugestões do Kuenda AI para negociar com rapidez e segurança.
+              </p>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
     </div>
   );
 }

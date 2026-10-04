@@ -47,8 +47,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/users/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/admin/stats").permitAll()
                         
-                        // Endpoints de autenticação pública
+                        // Endpoints de autenticação pública e assistente Kuenda AI
                         .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers("/api/ai/**").permitAll()
                         
                         // Handshake e broker WebSocket STOMP
                         .requestMatchers("/ws/**").permitAll()

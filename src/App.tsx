@@ -1,5 +1,6 @@
-import React from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import React, { useState } from 'react';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { motion, AnimatePresence } from 'motion/react';
 import Header from './components/Header';
 import AuthModal from './components/AuthModal';
 import ListingDetail from './components/ListingDetail';
@@ -11,12 +12,17 @@ import ProductCatalog from './components/ProductCatalog';
 import MessagesTab from './components/MessagesTab';
 import SellerTab from './components/SellerTab';
 import TermsTab from './components/TermsTab';
+import AiAssistantTab from './components/AiAssistantTab';
+import FloatingAiAssistant from './components/FloatingAiAssistant';
 import Footer from './components/Footer';
 import ToastNotifications from './components/ToastNotifications';
 import { useAppLogic } from './hooks/useAppLogic';
-import { AdBanner } from './types';
+import { AdBanner, ListingPrefillData } from './types';
 
 export default function App() {
+  const location = useLocation();
+  const [aiListingPrefill, setAiListingPrefill] = useState<ListingPrefillData | null>(null);
+
   const {
     activeTab,
     setActiveTab,
@@ -60,14 +66,13 @@ export default function App() {
     notificationCount,
     setNotificationCount,
     toasts,
+    setToasts,
     handleAuthSuccess,
     handleLogout,
     handleUpdateProfile,
     handleUpdateListingStatusAdmin,
     handleDeleteListingAdmin,
     fetchListings,
-    fetchChats,
-    fetchMessages,
     fetchSellerListings,
     handleSearchSubmit,
     handleContactSellerInput,
@@ -77,132 +82,274 @@ export default function App() {
     resetFilters,
   } = useAppLogic();
 
+  const handleApplyAiDraftToModal = (draft: ListingPrefillData) => {
+    setAiListingPrefill(draft);
+    if (!currentUser) {
+      setAuthModalMode('login');
+      setAuthModalOpen(true);
+    } else {
+      setCreateListingModalOpen(true);
+    }
+  };
+
   return (
     <div className="flex h-screen flex-col bg-slate-50 overflow-hidden font-sans">
-      <Header 
+      <Header
         currentUser={currentUser}
-        onOpenAuth={(mode) => { setAuthModalMode(mode); setAuthModalOpen(true); }}
+        onOpenAuth={(mode) => {
+          setAuthModalMode(mode);
+          setAuthModalOpen(true);
+        }}
         onLogout={handleLogout}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         onOpenCreateListing={() => {
-          if (!currentUser) { setAuthModalMode('login'); setAuthModalOpen(true); }
-          else setCreateListingModalOpen(true);
+          setAiListingPrefill(null);
+          if (!currentUser) {
+            setAuthModalMode('login');
+            setAuthModalOpen(true);
+          } else {
+            setCreateListingModalOpen(true);
+          }
         }}
         notificationCount={notificationCount}
         onResetNotifications={() => setNotificationCount(0)}
       />
 
       <div className="flex flex-1 overflow-hidden">
-        <Routes>
-          <Route path="/" element={
-            <ProductCatalog
-              listings={listings}
-              listingsLoading={listingsLoading}
-              search={search}
-              setSearch={setSearch}
-              category={category}
-              setCategory={setCategory}
-              location={locationState}
-              setLocation={setLocationState}
-              minPrice={minPrice}
-              setMinPrice={setMinPrice}
-              maxPrice={maxPrice}
-              setMaxPrice={setMaxPrice}
-              onSearchSubmit={handleSearchSubmit}
-              onResetFilters={resetFilters}
-              onOpenListingDetail={setSelectedListing}
-            />
-          } />
-          <Route path="/explore" element={<Navigate to="/" replace />} />
-          <Route path="/messages" element={
-            <MessagesTab
-              currentUser={currentUser}
-              chats={chats}
-              chatsLoading={chatsLoading}
-              selectedChat={selectedChat}
-              setSelectedChat={setSelectedChat}
-              messages={messages}
-              messagesLoading={messagesLoading}
-              typedMessage={typedMessage}
-              setTypedMessage={setTypedMessage}
-              messageSending={messageSending}
-              onSendMessage={handleSendMessage}
-            />
-          } />
-          <Route path="/seller" element={
-            currentUser ? (
-              <SellerTab
-                sellerListings={sellerListings}
-                sellerListingsLoading={sellerListingsLoading}
-                onCreateListingClick={() => setCreateListingModalOpen(true)}
-                onToggleListingStatus={handleToggleListingStatus}
-                onDeleteListing={handleDeleteListing}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={location.pathname}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+            className="flex flex-1 overflow-hidden"
+          >
+            <Routes location={location}>
+              <Route
+                path="/"
+                element={
+                  <ProductCatalog
+                    listings={listings}
+                    listingsLoading={listingsLoading}
+                    search={search}
+                    setSearch={setSearch}
+                    category={category}
+                    setCategory={setCategory}
+                    location={locationState}
+                    setLocation={setLocationState}
+                    minPrice={minPrice}
+                    setMinPrice={setMinPrice}
+                    maxPrice={maxPrice}
+                    setMaxPrice={setMaxPrice}
+                    onSearchSubmit={handleSearchSubmit}
+                    onResetFilters={resetFilters}
+                    onOpenListingDetail={setSelectedListing}
+                  />
+                }
               />
-            ) : ( <Navigate to="/" replace /> )
-          } />
-          <Route path="/profile" element={
-            currentUser ? (
-              <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto w-full bg-white flex flex-col">
-                <UserProfile 
-                  currentUser={currentUser} 
-                  onUpdateProfile={handleUpdateProfile} 
-                  listings={listings} 
-                  onOpenListingDetail={setSelectedListing}
-                  onAddPendingBanner={(bannerData) => {
-                    const b: AdBanner = {
-                      ...bannerData,
-                      id: 'ad-' + Math.random().toString(36).substring(2, 9),
-                      createdAt: new Date().toISOString()
-                    };
-                    setAds(p => [b, ...p]);
-                    setAdminStats(p => ({ ...p, messagesSentToday: p.messagesSentToday + 1 }));
-                  }}
-                />
-              </main>
-            ) : ( <Navigate to="/" replace /> )
-          } />
-          <Route path="/admin" element={
-            currentUser?.role === 'ADMIN' ? (
-              <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto w-full bg-slate-50 flex flex-col">
-                <AdminPanel 
-                  stats={adminStats} 
-                  listings={listings} 
-                  banners={ads} 
-                  onUpdateListingStatus={handleUpdateListingStatusAdmin} 
-                  onDeleteListing={handleDeleteListingAdmin} 
-                  onCreateBanner={(btn) => {
-                    const b: AdBanner = { ...btn, id: 'ad-' + Math.random().toString(36).substring(2, 9), createdAt: new Date().toISOString() };
-                    setAds(prev => [b, ...prev]);
-                    setAdminStats(prev => ({ ...prev, activeBanners: prev.activeBanners + 1 }));
-                  }}
-                  onToggleBanner={(id) => setAds(p => p.map(b => b.id === id ? { ...b, active: !b.active } : b))}
-                  onDeleteBanner={(id) => {
-                    if (confirm('Eliminar?')) setAds(p => p.filter(b => b.id !== id));
-                  }}
-                />
-              </main>
-            ) : ( <Navigate to="/" replace /> )
-          } />
-          <Route path="/terms" element={
-            <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto w-full bg-white flex flex-col">
-              <TermsTab />
-            </main>
-          } />
-        </Routes>
-        {activeTab !== 'admin' && activeTab !== 'terms' && <AdSidePanel ads={ads} />}
+              <Route path="/explore" element={<Navigate to="/" replace />} />
+              <Route
+                path="/ai"
+                element={
+                  <AiAssistantTab
+                    currentUser={currentUser}
+                    authToken={authToken}
+                    onOpenListingDetail={setSelectedListing}
+                    onContactSeller={handleContactSellerInput}
+                    onApplyDraftToModal={handleApplyAiDraftToModal}
+                  />
+                }
+              />
+              <Route
+                path="/messages"
+                element={
+                  <MessagesTab
+                    currentUser={currentUser}
+                    chats={chats}
+                    chatsLoading={chatsLoading}
+                    selectedChat={selectedChat}
+                    setSelectedChat={setSelectedChat}
+                    messages={messages}
+                    messagesLoading={messagesLoading}
+                    typedMessage={typedMessage}
+                    setTypedMessage={setTypedMessage}
+                    messageSending={messageSending}
+                    onSendMessage={handleSendMessage}
+                  />
+                }
+              />
+              <Route
+                path="/seller"
+                element={
+                  currentUser ? (
+                    <SellerTab
+                      sellerListings={sellerListings}
+                      sellerListingsLoading={sellerListingsLoading}
+                      onCreateListingClick={() => {
+                        setAiListingPrefill(null);
+                        setCreateListingModalOpen(true);
+                      }}
+                      onToggleListingStatus={handleToggleListingStatus}
+                      onDeleteListing={handleDeleteListing}
+                      sellerId={currentUser.id}
+                    />
+                  ) : (
+                    <Navigate to="/" replace />
+                  )
+                }
+              />
+              <Route
+                path="/profile"
+                element={
+                  currentUser ? (
+                    <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto w-full bg-white flex flex-col">
+                      <UserProfile
+                        currentUser={currentUser}
+                        onUpdateProfile={handleUpdateProfile}
+                        listings={listings}
+                        onOpenListingDetail={setSelectedListing}
+                        onAddPendingBanner={(bannerData) => {
+                          const b: AdBanner = {
+                            ...bannerData,
+                            id: 'ad-' + Math.random().toString(36).substring(2, 9),
+                            createdAt: new Date().toISOString(),
+                          };
+                          setAds((p) => [b, ...p]);
+                          setAdminStats((p) => ({
+                            ...p,
+                            messagesSentToday: p.messagesSentToday + 1,
+                          }));
+                        }}
+                      />
+                    </main>
+                  ) : (
+                    <Navigate to="/" replace />
+                  )
+                }
+              />
+              <Route
+                path="/admin"
+                element={
+                  <main className="flex-1 overflow-y-auto w-full bg-slate-50 flex flex-col">
+                    <AdminPanel
+                      stats={adminStats}
+                      listings={listings}
+                      banners={ads}
+                      onUpdateListingStatus={handleUpdateListingStatusAdmin}
+                      onDeleteListing={handleDeleteListingAdmin}
+                      onCreateBanner={(btn) => {
+                        const b: AdBanner = {
+                          ...btn,
+                          id: 'ad-' + Math.random().toString(36).substring(2, 9),
+                          createdAt: new Date().toISOString(),
+                        };
+                        setAds((prev) => [b, ...prev]);
+                        setAdminStats((prev) => ({
+                          ...prev,
+                          activeBanners: prev.activeBanners + 1,
+                        }));
+                      }}
+                      onToggleBanner={(id) =>
+                        setAds((p) =>
+                          p.map((b) => (b.id === id ? { ...b, active: !b.active } : b))
+                        )
+                      }
+                      onDeleteBanner={(id) => {
+                        setAds((p) => p.filter((b) => b.id !== id));
+                      }}
+                    />
+                  </main>
+                }
+              />
+              <Route
+                path="/terms"
+                element={
+                  <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto w-full bg-white flex flex-col">
+                    <TermsTab />
+                  </main>
+                }
+              />
+            </Routes>
+          </motion.div>
+        </AnimatePresence>
+        {activeTab !== 'admin' && activeTab !== 'terms' && activeTab !== 'ai' && (
+          <AdSidePanel ads={ads} />
+        )}
       </div>
 
-      <ToastNotifications 
-        toasts={toasts} 
-        onToastClick={() => { setActiveTab('messages'); setNotificationCount(0); }} 
+      <FloatingAiAssistant
+        currentUser={currentUser}
+        authToken={authToken}
+        activeTab={activeTab}
+        onNavigateToFullAiTab={() => setActiveTab('ai')}
+        onOpenListingDetail={setSelectedListing}
+        onApplyDraftToModal={handleApplyAiDraftToModal}
+      />
+
+      <ToastNotifications
+        toasts={toasts}
+        onToastClick={() => {
+          setActiveTab('messages');
+          setNotificationCount(0);
+        }}
       />
 
       <Footer onTermsClick={() => setActiveTab('terms')} />
 
-      <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} initialMode={authModalMode} onAuthSuccess={handleAuthSuccess} />
-      <CreateListingModal isOpen={createListingModalOpen} onClose={() => setCreateListingModalOpen(false)} authToken={authToken || ''} onSuccess={() => { fetchListings(); if (activeTab === 'seller') fetchSellerListings(); alert('Anúncio criado com sucesso!'); }} />
-      {selectedListing && <ListingDetail listing={selectedListing} isOpen={true} onClose={() => setSelectedListing(null)} onContactSeller={handleContactSellerInput} isCurrentUserSeller={selectedListing.sellerId === currentUser?.id} />}
+      <AnimatePresence>
+        {authModalOpen && (
+          <AuthModal
+            isOpen={authModalOpen}
+            onClose={() => setAuthModalOpen(false)}
+            initialMode={authModalMode}
+            onAuthSuccess={(user, tok) => {
+              handleAuthSuccess(user, tok);
+              if (aiListingPrefill) {
+                setCreateListingModalOpen(true);
+              }
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {createListingModalOpen && (
+          <CreateListingModal
+            isOpen={createListingModalOpen}
+            onClose={() => {
+              setCreateListingModalOpen(false);
+              setAiListingPrefill(null);
+            }}
+            authToken={authToken || ''}
+            initialDraft={aiListingPrefill}
+            onSuccess={() => {
+              fetchListings();
+              if (activeTab === 'seller') fetchSellerListings();
+              const newToast = {
+                id: Math.random().toString(36).substring(2, 9),
+                title: 'Anúncio Publicado',
+                text: 'O seu anúncio já está ativo no catálogo!',
+              };
+              setToasts((prev) => [...prev, newToast]);
+              setTimeout(() => setToasts((t) => t.filter((x) => x.id !== newToast.id)), 5000);
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {selectedListing && (
+          <ListingDetail
+            listing={selectedListing}
+            isOpen={true}
+            onClose={() => setSelectedListing(null)}
+            onContactSeller={handleContactSellerInput}
+            isCurrentUserSeller={selectedListing.sellerId === currentUser?.id}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
